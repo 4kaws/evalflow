@@ -1,0 +1,22 @@
+# Windows Zone.Identifier alternate data streams (created when copying from Windows)
+*:Zone.Identifier
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# App data — credentials and session files, never commit these
+.env
+.env.bak
+.evalflow_slug_history.json
+outputs/
+data/
+
+# Kaggle
+kaggle.json
+
+# IDE / tooling
+.claude/
