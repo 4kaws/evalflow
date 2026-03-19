@@ -349,7 +349,7 @@ class PullView(Vertical):
                 ).decode()
                 resp = requests.get(
                     "https://www.kaggle.com/api/v1/kernels",
-                    params={"userRef": username, "search": slug_name, "pageSize": 100},
+                    params={"user": username, "search": slug_name, "pageSize": 100},
                     headers={"Authorization": f"Basic {token}"},
                     timeout=30,
                 )
