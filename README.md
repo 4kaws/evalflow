@@ -14,6 +14,21 @@ You write your benchmark on Kaggle. Kaggle runs it against as many models as you
 for free. Evalflow handles everything after that: one slug, all tasks pulled at once,
 two research-ready CSVs produced, published to Kaggle Datasets in one click.
 
+The two datasets Evalflow produces are formats actively used in AI research and model training:
+
+- **`evalflow_sft.csv`** — a Supervised Fine-Tuning (SFT) dataset. One row per model response,
+  with the full conversation in chat format. Used to fine-tune language models on
+  instruction-following by training them on correct responses.
+
+- **`evalflow_preferences.csv`** — a preference dataset for RLHF / Direct Preference Optimization
+  (DPO). One row per question where at least one model passed and one failed, pairing a chosen
+  (correct) response against a rejected (incorrect) one. Used to align language models toward
+  better answers without human labellers — the benchmark judge does the labelling automatically.
+
+Both files are ready to load directly into training pipelines (Hugging Face `datasets`,
+TRL, LLaMA-Factory, and similar frameworks) or to share publicly on Kaggle Datasets so
+other researchers can build on your benchmark results.
+
 ---
 
 ## Workflow
