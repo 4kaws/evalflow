@@ -262,8 +262,14 @@ class EvalflowApp(App):
 if __name__ == "__main__":
     args = parse_args()   # handles --help and --version before TUI starts
 
-    from setup_wizard import SetupWizard
-    if not args.no_wizard:
+    from setup_wizard import SetupWizard, should_run_wizard
+    if not args.no_wizard and should_run_wizard():
         SetupWizard().run()
+        # Wizard may have just written .env — reload it so the main app
+        # picks up the credentials the user entered.
+        from dotenv import load_dotenv
+        import config as _cfg
+        load_dotenv(override=True)
+        _cfg.config.__dict__.update(_cfg.Config.load().__dict__)
 
     EvalflowApp().run()
