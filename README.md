@@ -69,7 +69,7 @@ Kaggle (browser)                              Evalflow (terminal)
 # Python 3.12+ is required
 python3 --version
 
-git clone https://github.com/your-username/evalflow.git
+git clone https://github.com/4kaws/evalflow.git
 cd evalflow
 
 # Create and activate a virtual environment
@@ -88,7 +88,7 @@ python evalflow.py
 # Install Python 3.12+ via Homebrew if needed
 brew install python@3.12
 
-git clone https://github.com/your-username/evalflow.git
+git clone https://github.com/4kaws/evalflow.git
 cd evalflow
 
 # Create and activate a virtual environment
@@ -126,7 +126,7 @@ sudo apt update && sudo apt upgrade -y
 sudo apt install python3.12 python3.12-venv python3-pip git -y
 
 # Clone Evalflow
-git clone https://github.com/your-username/evalflow.git
+git clone https://github.com/4kaws/evalflow.git
 cd evalflow
 
 # Create and activate a virtual environment
