@@ -264,7 +264,26 @@ class PullView(Vertical):
 
         # Authenticate
         try:
+            import os
             from kaggle.api.kaggle_api_extended import KaggleApi
+            from config import config
+
+            # Explicitly inject credentials into the environment so the SDK
+            # finds them regardless of working directory or dotenv load order.
+            if config.kaggle_username and config.kaggle_key:
+                os.environ["KAGGLE_USERNAME"] = config.kaggle_username
+                os.environ["KAGGLE_KEY"]      = config.kaggle_key
+
+            if not config.kaggle_username or not config.kaggle_key:
+                log.write_line(
+                    "[x] Credentials not configured.\n\n"
+                    "   Make sure one of these is configured:\n"
+                    "   • KAGGLE_USERNAME + KAGGLE_KEY in .env\n"
+                    "   • ~/.kaggle/kaggle.json\n"
+                    "   Get your token: kaggle.com → Settings → API → Create New Token"
+                )
+                return
+
             api = KaggleApi()
             api.authenticate()
             log.write_line("[ok] Authenticated with Kaggle API\n")
@@ -329,59 +348,43 @@ class PullView(Vertical):
         Find all task notebooks belonging to a benchmark.
 
         Strategy — tried in order until one succeeds:
-          1. REST API search (requests + Basic auth) — reliable across SDK versions
-          2. kernels_list SDK call — fallback
+          1. SDK kernels_list(user=, search=) — primary
+          2. SDK kernels_list(search=) filtered to the user — fallback
           3. Treat benchmark_slug itself as a single task
         """
-        import base64
-        import requests
-
-        from config import config
-
         username, slug_name = benchmark_slug.split("/", 1)
         log.write_line(f">> Discovering tasks under: {benchmark_slug}\n")
 
-        # ── Strategy 1: REST API with Basic auth ──────────────────────
-        if config.kaggle_username and config.kaggle_key:
-            try:
-                token = base64.b64encode(
-                    f"{config.kaggle_username}:{config.kaggle_key}".encode()
-                ).decode()
-                resp = requests.get(
-                    "https://www.kaggle.com/api/v1/kernels",
-                    params={"user": username, "search": slug_name, "pageSize": 100},
-                    headers={"Authorization": f"Basic {token}"},
-                    timeout=30,
-                )
-                resp.raise_for_status()
-                results = resp.json()
-                if isinstance(results, list) and results:
-                    slugs = [
-                        f"{r['ref']}" if "/" in r.get("ref", "") else f"{username}/{r['ref']}"
-                        for r in results
-                        if r.get("ref") and slug_name in r.get("ref", "").lower()
-                    ]
-                    if slugs:
-                        log.write_line(f"   Found {len(slugs)} notebook(s) matching '{slug_name}':\n")
-                        for s in slugs:
-                            log.write_line(f"   - {s}")
-                        return slugs
-            except Exception as exc:
-                log.write_line(f"   (REST search failed: {exc})")
-
-        # ── Strategy 2: SDK kernels_list ───────────────────────────────
+        # ── Strategy 1: SDK with user + search ────────────────────────
         try:
             results = api.kernels_list(user=username, search=slug_name, page_size=100)
             if results:
                 tasks = [k for k in results if k.ref and slug_name in k.ref.lower()]
                 if tasks:
                     slugs = [k.ref for k in tasks]
-                    log.write_line(f"   Found {len(slugs)} notebook(s) via SDK:\n")
+                    log.write_line(f"   Found {len(slugs)} notebook(s):\n")
                     for s in slugs:
                         log.write_line(f"   - {s}")
                     return slugs
         except Exception as exc:
-            log.write_line(f"   (SDK search failed: {exc})")
+            log.write_line(f"   (SDK user+search failed: {exc})")
+
+        # ── Strategy 2: SDK search only, filter by user ───────────────
+        try:
+            results = api.kernels_list(search=slug_name, page_size=100)
+            if results:
+                tasks = [
+                    k for k in results
+                    if k.ref and username in k.ref.lower() and slug_name in k.ref.lower()
+                ]
+                if tasks:
+                    slugs = [k.ref for k in tasks]
+                    log.write_line(f"   Found {len(slugs)} notebook(s) via search fallback:\n")
+                    for s in slugs:
+                        log.write_line(f"   - {s}")
+                    return slugs
+        except Exception as exc:
+            log.write_line(f"   (SDK search fallback failed: {exc})")
 
         # ── Strategy 3: treat as single-task benchmark ────────────────
         log.write_line(
