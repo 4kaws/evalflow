@@ -240,6 +240,7 @@ class MonitorView(Vertical):
         with Horizontal(id="add-row"):
             yield Button("Add / Update Watcher", id="add-btn", variant="primary")
             yield Button("Force Republish Selected", id="republish-btn", variant="default")
+            yield Button("Push to GitHub", id="push-github-btn", variant="default")
 
         with Horizontal(id="log-title-row"):
             yield Static("Monitor Log", classes="section-title")
@@ -366,6 +367,8 @@ class MonitorView(Vertical):
             self._save_schedule()
         elif bid == "load-log-btn":
             self._load_log_file()
+        elif bid == "push-github-btn":
+            self._push_to_github()
 
     def action_check_all(self) -> None:
         self._check_all()
@@ -641,6 +644,35 @@ class MonitorView(Vertical):
         result = upload_dataset(folder=staging, is_update=True, append=True, log_cb=write)
         if not result.success:
             write(f"   [x] {result.error}")
+
+    # ------------------------------------------------------------------ #
+    #  Push manifest to GitHub                                           #
+    # ------------------------------------------------------------------ #
+
+    @work(thread=True)
+    def _push_to_github(self) -> None:
+        log = self.query_one("#monitor-log", Log)
+
+        def write(msg: str):
+            self.app.call_from_thread(log.write_line, msg)
+
+        write("\n>> Pushing manifest to GitHub …")
+        manifest_path = str(Path(_WORKDIR) / ".evalflow_manifest.json")
+        steps = [
+            (["git", "-C", _WORKDIR, "add", manifest_path],        "Staging manifest …"),
+            (["git", "-C", _WORKDIR, "commit", "-m", "update: monitor manifest [evalflow]"], "Committing …"),
+            (["git", "-C", _WORKDIR, "push"],                       "Pushing …"),
+        ]
+        for cmd, label in steps:
+            write(f"   {label}")
+            r = subprocess.run(cmd, capture_output=True, text=True)
+            if r.returncode != 0:
+                if "nothing to commit" in r.stdout + r.stderr:
+                    write("   (nothing to commit — manifest already up to date)")
+                    continue
+                write(f"   [x] {r.stderr.strip() or r.stdout.strip()}")
+                return
+        write("   ✅ Manifest pushed — GitHub Actions will use updated watchers on next run.")
 
     # ------------------------------------------------------------------ #
     #  Log file                                                            #

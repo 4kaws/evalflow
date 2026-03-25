@@ -269,10 +269,26 @@ publish automatically, with no manual steps.
 - This writes a crontab entry that runs `monitor.py --all` at the given time every day
 - The schedule runs independently of the TUI — you do not need the app open
 
+**Syncing watchers with GitHub Actions:**
+The Monitor tab has a **Push to GitHub** button. After adding or updating a watcher,
+click it to commit and push `.evalflow_manifest.json` directly from the TUI — no
+terminal needed. GitHub Actions reads this file on every scheduled run, so pushing
+keeps the cloud schedule in sync with your local watcher configuration.
+
+You can also do this manually:
+```bash
+git add .evalflow_manifest.json
+git commit -m "update: monitor manifest"
+git push
+```
+
 **Headless / no machine required:**
 The GitHub Actions workflow (`.github/workflows/evalflow_ci.yml`) runs the same
 `monitor.py --all` on GitHub's servers every day at 08:00 Bucharest time (06:00 UTC),
 so your datasets update even when your machine is off. See the CI section below.
+
+Both the local cron and GitHub Actions can run simultaneously — the dataset
+append + deduplication logic prevents any duplicate data.
 
 ---
 
