@@ -28,20 +28,57 @@ on:
         type: choice
         options: ["true", "false"]
 
-  # Optional: run on a schedule and pull the latest notebook version automatically.
-  # Uncomment and set your inputs as env vars (see the job below).
-  # schedule:
-  #   - cron: "0 6 * * 1"   # every Monday 06:00 UTC
+  schedule:
+    - cron: "0 6 * * *"   # every day at 08:00 EET (UTC+2) / 09:00 EEST (UTC+3)
 
 env:
   PYTHON_VERSION: "3.11"
 
 jobs:
   # ------------------------------------------------------------------ #
-  #  Pull → Merge → Publish                                            #
+  #  Scheduled: run all manifest watchers daily                        #
+  # ------------------------------------------------------------------ #
+  monitor:
+    name: Daily monitor — all watchers
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run monitor (all watchers)
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY:      ${{ secrets.KAGGLE_KEY }}
+          OUTPUT_DIR:      outputs
+        run: python monitor.py --all
+
+      - name: Upload merged CSVs as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evalflow-monitor-${{ github.run_id }}
+          path: |
+            outputs/evalflow_sft.csv
+            outputs/evalflow_preferences.csv
+          retention-days: 90
+
+  # ------------------------------------------------------------------ #
+  #  Manual: Pull → Merge → Publish a specific notebook               #
   # ------------------------------------------------------------------ #
   run:
     name: Pull ${{ github.event.inputs.notebook_slug }}
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:

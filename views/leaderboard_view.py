@@ -119,23 +119,21 @@ class LeaderboardView(Vertical):
 
     @work(thread=True, exclusive=True)
     def _load_all_outputs(self) -> None:
-        csvs = discover_outputs(config.output_dir)
-        if not csvs:
+        from core.merger import parse_run_json
+        run_files = discover_outputs(config.output_dir)
+        if not run_files:
             return
 
-        dfs = []
-        for path in csvs:
-            try:
-                df = pd.read_csv(path)
-                if {"model_name", "score", "question", "task_name"}.issubset(df.columns):
-                    dfs.append(df)
-            except Exception:
-                continue
+        rows = []
+        for path in run_files:
+            row, _ = parse_run_json(path)
+            if row:
+                rows.append(row)
 
-        if not dfs:
+        if not rows:
             return
 
-        combined = pd.concat(dfs, ignore_index=True).drop_duplicates(
+        combined = pd.DataFrame(rows).drop_duplicates(
             subset=["model_name", "question", "task_name"]
         )
         tasks = sorted(combined["task_name"].unique().tolist())

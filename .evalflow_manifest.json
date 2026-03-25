@@ -1,0 +1,15 @@
+{
+  "junesdata/evalflowtestt": {
+    "known_tasks": [
+      "junesdata/where-is-paris",
+      "junesdata/should-i-walk",
+      "junesdata/what-is-kendama",
+      "junesdata/how-many-r-s"
+    ],
+    "dataset_slug": "should-i-walk-hm",
+    "dataset_title": "shouldiwalktest",
+    "publish": true,
+    "last_checked": "2026-03-25T23:54:12",
+    "last_pull": "2026-03-25T23:54:12"
+  }
+}

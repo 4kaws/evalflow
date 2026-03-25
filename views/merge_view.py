@@ -8,7 +8,7 @@ from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual.widgets import Button, Checkbox, Input, Label, Log, Static
 
 from config import config
-from core.merger import discover_outputs, merge_outputs, validate_csv
+from core.merger import discover_outputs, merge_outputs, validate_run_json
 
 
 class MergeView(Vertical):
@@ -110,7 +110,7 @@ class MergeView(Vertical):
     def compose(self) -> ComposeResult:
         yield Static("Merge Benchmark Outputs", classes="section-title")
         yield Static(
-            "Select pulled CSVs to merge. Two files will be produced:\n"
+            "Select pulled .run.json files to merge. Two files will be produced:\n"
             "  + evalflow_sft.csv           — SFT / fine-tuning format\n"
             "  + evalflow_preferences.csv   — Preference pairs for RLHF / DPO",
             id="format-note",
@@ -148,11 +148,11 @@ class MergeView(Vertical):
         csvs = discover_outputs(config.output_dir)
         self._listed_files = [str(p) for p in csvs]
         if not csvs:
-            file_list.mount(Static("  No output CSVs found. Pull some from Kaggle first."))
+            file_list.mount(Static("  No .run.json files found. Pull some from Kaggle first."))
             return
 
         for path in csvs:
-            ok, msg = validate_csv(path)
+            ok, msg = validate_run_json(path)
             icon = "[+]" if ok else "[!]"
             label = f" {icon}  {path.name}" + (f"  [{msg}]" if not ok else "")
             cb = Checkbox(label, value=ok)
@@ -204,7 +204,7 @@ class MergeView(Vertical):
 
         try:
             sft_df, pref_df, stats = merge_outputs(
-                csv_paths=selected,
+                json_paths=selected,
                 output_dir=config.output_dir,
                 deduplicate=dedup,
             )
@@ -213,7 +213,9 @@ class MergeView(Vertical):
             log.write_line(f"[ok] evalflow_preferences.csv — {len(pref_df)} preference pairs")
 
             if stats["files_skipped"]:
-                log.write_line(f"[!]  {stats['files_skipped']} file(s) skipped (invalid columns)")
+                log.write_line(f"[!]  {stats['files_skipped']} file(s) skipped:")
+                for fname, reason in stats.get("skipped_details", []):
+                    log.write_line(f"       {fname}: {reason}")
             if stats["duplicates_removed"]:
                 log.write_line(f"  -  {stats['duplicates_removed']} duplicate rows removed")
 

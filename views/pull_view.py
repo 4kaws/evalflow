@@ -167,7 +167,7 @@ class PullView(Vertical):
         with Horizontal(classes="field-row"):
             yield Label("Task prefix slug:", classes="field-label")
             yield Input(
-                placeholder="your-username/benchmark-name  (e.g. alice/my-benchmark)",
+                placeholder="username/notebook-name  (from Kaggle benchmark URL)",
                 id="slug-input",
                 classes="field-input",
             )
@@ -203,7 +203,7 @@ class PullView(Vertical):
 
     def on_mount(self) -> None:
         table = self.query_one("#pulled-table", DataTable)
-        table.add_columns("Task notebook", "File", "Size", "Rows", "Models", "Accuracy")
+        table.add_columns("Task notebook", "File", "Size", "Task", "Model", "Score")
         self._refresh_history_input()
 
     # ------------------------------------------------------------------ #
@@ -247,11 +247,22 @@ class PullView(Vertical):
         out_dir = Path(self.query_one("#outdir-input", Input).value.strip())
         auto_merge = self.query_one("#auto-merge-switch", Checkbox).value
         if not slug:
-            log.write_line("[x] No slug entered.\n   Format: username/task-prefix")
+            log.write_line("[x] No slug entered.\n   Format: username/notebook-name")
             return
         if "/" not in slug:
-            log.write_line(f"[x] Slug looks incomplete: '{slug}'\n   It should be: username/prefix")
+            log.write_line(
+                f"[x] Missing username in '{slug}'.\n\n"
+                "   Format: username/notebook-name\n"
+                "   The username is in the Kaggle URL:\n"
+                "   kaggle.com/benchmarks/tasks/USERNAME/notebook-name"
+            )
             return
+        import re as _re
+        # Normalise task names to URL slugs: "Should I walk?" → "should-i-walk"
+        user, task = slug.split("/", 1)
+        task = _re.sub(r"[^\w\s-]", "", task).strip().lower()
+        task = _re.sub(r"[\s_]+", "-", task)
+        slug = f"{user}/{task}"
         self._run_pull(slug, out_dir, download, auto_merge)
 
     # ------------------------------------------------------------------ #
@@ -265,11 +276,10 @@ class PullView(Vertical):
         # Authenticate
         try:
             import os
+            from kagglesdk import KaggleClient
             from kaggle.api.kaggle_api_extended import KaggleApi
             from config import config
 
-            # Explicitly inject credentials into the environment so the SDK
-            # finds them regardless of working directory or dotenv load order.
             if config.kaggle_username and config.kaggle_key:
                 os.environ["KAGGLE_USERNAME"] = config.kaggle_username
                 os.environ["KAGGLE_KEY"]      = config.kaggle_key
@@ -284,24 +294,25 @@ class PullView(Vertical):
                 )
                 return
 
+            kag_client = KaggleClient(
+                username=config.kaggle_username,
+                api_token=config.kaggle_key,
+            )
             api = KaggleApi()
             api.authenticate()
             log.write_line("[ok] Authenticated with Kaggle API\n")
         except ImportError:
-            log.write_line("[x] kaggle package not installed. Run: pip install kaggle")
+            log.write_line("[x] kaggle / kagglesdk package not installed.")
             return
         except (SystemExit, Exception) as exc:
             log.write_line(
                 f"[x] Authentication failed: {exc}\n\n"
-                "   Make sure one of these is configured:\n"
-                "   • KAGGLE_USERNAME + KAGGLE_KEY in .env\n"
-                "   • ~/.kaggle/kaggle.json\n"
-                "   Get your token: kaggle.com → Settings → API → Create New Token"
+                "   Make sure KAGGLE_USERNAME + KAGGLE_KEY are set in .env"
             )
             return
 
         # Discover task notebooks
-        task_slugs = self._discover_tasks(api, slug, log)
+        task_slugs = self._discover_tasks(api, slug, log, kag_client=kag_client)
         if not task_slugs:
             return
 
@@ -315,23 +326,23 @@ class PullView(Vertical):
 
         for i, task_slug in enumerate(task_slugs, 1):
             log.write_line(f"\n[{i}/{len(task_slugs)}] Pulling: {task_slug}")
-            csvs = self._pull_one_task(api, task_slug, out_dir, log)
-            if csvs:
-                all_downloaded.extend((task_slug, p) for p in csvs)
+            run_files = self._pull_one_task(api, kag_client, config.kaggle_username, config.kaggle_key, task_slug, out_dir, log)
+            if run_files:
+                all_downloaded.extend((task_slug, p) for p in run_files)
             else:
                 failed_tasks.append(task_slug)
 
         # Summary
         log.write_line(f"\n{'─'*50}")
-        log.write_line(f"[ok] Pulled {len(all_downloaded)} CSV(s) from {len(task_slugs)} task(s)")
+        log.write_line(f"[ok] Pulled {len(all_downloaded)} run file(s) from {len(task_slugs)} task(s)")
         if failed_tasks:
-            log.write_line(f"[!]  {len(failed_tasks)} task(s) had no CSV output: {', '.join(failed_tasks)}")
+            log.write_line(f"[!]  {len(failed_tasks)} task(s) had no .run.json output: {', '.join(failed_tasks)}")
 
         def _finish() -> None:
             self._populate_table(all_downloaded, log)
             self._add_to_history(slug)
             self.query_one("#status-bar").update(
-                f"  {len(all_downloaded)} CSV(s) saved to {out_dir}"
+                f"  {len(all_downloaded)} run file(s) saved to {out_dir}"
                 "  |  Switch to Merge to combine them."
             )
             if auto_merge and all_downloaded:
@@ -343,54 +354,58 @@ class PullView(Vertical):
     #  Task discovery                                                      #
     # ------------------------------------------------------------------ #
 
-    def _discover_tasks(self, api, benchmark_slug: str, log: Log) -> list[str]:
+    def _discover_tasks(self, api, benchmark_slug: str, log: Log, kag_client=None) -> list[str]:
         """
         Find all task notebooks belonging to a benchmark.
 
-        Strategy — tried in order until one succeeds:
-          1. SDK kernels_list(user=, search=) — primary
-          2. SDK kernels_list(search=) filtered to the user — fallback
-          3. Treat benchmark_slug itself as a single task
+        Expects "username/benchmark-name". Tries three strategies:
+          1. get_benchmark_leaderboard — extracts task slugs from the leaderboard API
+          2. kernels_list(parent=) — official parent/child API
+          3. Treat benchmark_slug itself as a single-task notebook
         """
         username, slug_name = benchmark_slug.split("/", 1)
-        log.write_line(f">> Discovering tasks under: {benchmark_slug}\n")
+        log.write_line(f">> Discovering tasks in: {benchmark_slug}\n")
 
-        # ── Strategy 1: SDK with user + search ────────────────────────
+        # ── Strategy 1: leaderboard API → task slugs ──────────────────
+        if kag_client is not None:
+            try:
+                from kagglesdk.benchmarks.types.benchmarks_api_service import ApiGetBenchmarkLeaderboardRequest
+                req = ApiGetBenchmarkLeaderboardRequest()
+                req.owner_slug     = username
+                req.benchmark_slug = slug_name
+                lb = kag_client.benchmarks.benchmarks_api_client.get_benchmark_leaderboard(req)
+                task_slugs: set[str] = set()
+                for row in (lb.rows or []):
+                    for tr in (row.task_results or []):
+                        if tr.benchmark_task_slug:
+                            short = tr.benchmark_task_slug.rstrip('/').split('/')[-1]
+                            task_slugs.add(short)
+                if task_slugs:
+                    slugs = [f"{username}/{s}" for s in sorted(task_slugs)]
+                    log.write_line(f"   Found {len(slugs)} task(s) via leaderboard API:\n")
+                    for s in slugs:
+                        log.write_line(f"   - {s}")
+                    return slugs
+            except Exception as exc:
+                log.write_line(f"   (leaderboard API failed: {exc})")
+
+        # ── Strategy 2: kernels_list parent lookup ────────────────────
         try:
-            results = api.kernels_list(user=username, search=slug_name, page_size=100)
-            if results:
-                tasks = [k for k in results if k.ref and slug_name in k.ref.lower()]
-                if tasks:
-                    slugs = [k.ref for k in tasks]
-                    log.write_line(f"   Found {len(slugs)} notebook(s):\n")
+            children = api.kernels_list(parent=benchmark_slug, page_size=100)
+            if children:
+                slugs = [k.ref for k in children if k.ref]
+                if slugs:
+                    log.write_line(f"   Found {len(slugs)} task(s) via parent lookup:\n")
                     for s in slugs:
                         log.write_line(f"   - {s}")
                     return slugs
         except Exception as exc:
-            log.write_line(f"   (SDK user+search failed: {exc})")
+            log.write_line(f"   (parent lookup failed: {exc})")
 
-        # ── Strategy 2: SDK search only, filter by user ───────────────
-        try:
-            results = api.kernels_list(search=slug_name, page_size=100)
-            if results:
-                tasks = [
-                    k for k in results
-                    if k.ref and username in k.ref.lower() and slug_name in k.ref.lower()
-                ]
-                if tasks:
-                    slugs = [k.ref for k in tasks]
-                    log.write_line(f"   Found {len(slugs)} notebook(s) via search fallback:\n")
-                    for s in slugs:
-                        log.write_line(f"   - {s}")
-                    return slugs
-        except Exception as exc:
-            log.write_line(f"   (SDK search fallback failed: {exc})")
-
-        # ── Strategy 3: treat as single-task benchmark ────────────────
+        # ── Strategy 3: treat as single-task notebook ─────────────────
         log.write_line(
-            f"\n   Could not find task notebooks automatically.\n"
-            f"   Treating '{benchmark_slug}' as a single-task notebook.\n"
-            f"\n   Tip: enter 'username/prefix' to find all matching notebooks.\n"
+            f"\n   Could not find notebooks automatically.\n"
+            f"   Treating '{benchmark_slug}' as a single notebook.\n"
         )
         return [benchmark_slug]
 
@@ -401,66 +416,84 @@ class PullView(Vertical):
     def _pull_one_task(
         self,
         api,
+        kag_client,
+        username: str,
+        api_key: str,
         task_slug: str,
         out_dir: Path,
         log: Log,
     ) -> list[Path]:
-        """Pull output CSVs from the latest run of one task/model kernel."""
-        import shutil
+        """List and download .run.json outputs from a benchmark task kernel."""
+        import requests
+        from kagglesdk.kernels.types.kernels_api_service import ApiListKernelSessionOutputRequest
 
-        short_name = task_slug.split("/")[-1]
-        tmp_dir = out_dir / f"_tmp_{short_name}"
-        tmp_dir.mkdir(parents=True, exist_ok=True)
+        owner, kernel_slug = task_slug.split("/", 1)
 
+        all_run_files = []
+        page_token    = None
         try:
-            api.kernels_output(task_slug, path=str(tmp_dir), force=True)
-
-            csvs = list(tmp_dir.glob("*.csv"))
-            if not csvs:
-                log.write_line(f"   [!] No CSV output found for {task_slug}")
-                return []
-
-            # Remove any stale CSVs for this task before saving fresh ones
-            for stale in out_dir.glob(f"{short_name}__*.csv"):
-                stale.unlink()
-
-            saved = []
-            for csv in csvs:
-                dest = out_dir / f"{short_name}__{csv.name}"
-                csv.rename(dest)
-                saved.append(dest)
-                log.write_line(f"   + {dest.name}")
-
-            return saved
-
+            while True:
+                req = ApiListKernelSessionOutputRequest()
+                req.user_name   = owner
+                req.kernel_slug = kernel_slug
+                req.page_size   = 100
+                if page_token:
+                    req.page_token = page_token
+                response = kag_client.kernels.kernels_api_client.list_kernel_session_output(req)
+                all_run_files += [f for f in (response.files or []) if f.file_name.endswith(".run.json")]
+                page_token = response.next_page_token or ""
+                if not page_token:
+                    break
         except Exception as exc:
-            log.write_line(f"   [x] Failed to pull {task_slug}: {exc}")
+            exc_str = str(exc)
+            if "403" in exc_str:
+                log.write_line(f"   ⏳ {task_slug}: no accessible runs yet (403) — skipping.")
+            else:
+                log.write_line(f"   [x] Failed to list outputs for {task_slug}: {exc_str}")
             return []
-        finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+        if not all_run_files:
+            log.write_line(f"   [!] No .run.json output found for {task_slug}")
+            return []
+
+        log.write_line(f"   Found {len(all_run_files)} .run.json file(s)")
+
+        saved = []
+        for file_info in all_run_files:
+            dest = out_dir / file_info.file_name
+            try:
+                r = requests.get(file_info.url, auth=(username, api_key), timeout=60)
+                r.raise_for_status()
+                dest.write_bytes(r.content)
+                saved.append(dest)
+                log.write_line(f"   + {file_info.file_name}")
+            except Exception as exc:
+                log.write_line(f"   [!] Failed to download {file_info.file_name}: {exc}")
+
+        return saved
 
     # ------------------------------------------------------------------ #
     #  Table + history                                                     #
     # ------------------------------------------------------------------ #
 
     def _populate_table(self, items: list[tuple[str, Path]], log: Log) -> None:
-        import pandas as pd
+        from core.merger import parse_run_json
 
         table = self.query_one("#pulled-table", DataTable)
         table.clear()
 
         for task_slug, path in items:
             size_kb = round(path.stat().st_size / 1024, 1)
-            try:
-                df      = pd.read_csv(path)
-                rows    = len(df)
-                models  = df["model_name"].nunique() if "model_name" in df.columns else "?"
-                acc     = f"{df['score'].mean() * 100:.1f}%" if "score" in df.columns else "?"
-            except Exception:
-                rows, models, acc = "?", "?", "?"
+            row, _ = parse_run_json(path)
+            if row:
+                task  = row.get("task_name", "?")
+                model = row.get("model_name", "?").split("/")[-1]
+                score = "pass" if row.get("score", 0) else "fail"
+            else:
+                task, model, score = "?", "?", "?"
 
             short_task = task_slug.split("/")[-1]
-            table.add_row(short_task, path.name, f"{size_kb} KB", str(rows), str(models), acc)
+            table.add_row(short_task, path.name, f"{size_kb} KB", task, model, score)
 
     def _add_to_history(self, slug: str) -> None:
         if slug in self._history:

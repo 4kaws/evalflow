@@ -58,16 +58,16 @@ def discover_tasks(api, benchmark_slug: str) -> list[str]:
 
 
 def pull_task(api, task_slug: str, out_dir: Path) -> list[Path]:
-    """Pull CSV outputs from one task notebook."""
+    """Pull .run.json outputs from one task notebook."""
+    import shutil
     tmp = out_dir / "_tmp_task"
     tmp.mkdir(parents=True, exist_ok=True)
     try:
         api.kernels_output(task_slug, path=str(tmp))
-        short = task_slug.split("/")[-1]
         saved = []
-        for csv in tmp.glob("*.csv"):
-            dest = out_dir / f"{short}__{csv.name}"
-            csv.rename(dest)
+        for run_file in tmp.glob("*.run.json"):
+            dest = out_dir / run_file.name
+            run_file.rename(dest)
             saved.append(dest)
             print(f"      Saved: {dest.name}")
         return saved
@@ -75,10 +75,7 @@ def pull_task(api, task_slug: str, out_dir: Path) -> list[Path]:
         print(f"      ❌ Failed: {exc}", file=sys.stderr)
         return []
     finally:
-        try:
-            tmp.rmdir()
-        except Exception:
-            pass
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def main() -> None:
@@ -102,18 +99,18 @@ def main() -> None:
     print(f"   → {len(task_slugs)} task(s) to pull\n")
 
     # ── Pull each task ────────────────────────────────────────────────
-    all_csvs:   list[Path] = []
+    all_files:  list[Path] = []
     failed:     list[str]  = []
 
     for i, task_slug in enumerate(task_slugs, 1):
         print(f"⬇  [{i}/{len(task_slugs)}] {task_slug}")
-        csvs = pull_task(api, task_slug, out_dir)
-        if csvs:
-            all_csvs.extend(csvs)
+        files = pull_task(api, task_slug, out_dir)
+        if files:
+            all_files.extend(files)
         else:
             failed.append(task_slug)
 
-    print(f"\n✅ Downloaded {len(all_csvs)} CSV(s)")
+    print(f"\n✅ Downloaded {len(all_files)} run file(s)")
     if failed:
         print(f"⚠  {len(failed)} task(s) had no output: {', '.join(failed)}")
 
@@ -121,11 +118,11 @@ def main() -> None:
     if args.merge:
         print("\n🔗 Merging…")
         from core.merger import discover_outputs, merge_outputs
-        csvs = discover_outputs(out_dir)
-        if not csvs:
-            print("⚠  No valid CSVs found to merge.")
+        run_files = discover_outputs(out_dir)
+        if not run_files:
+            print("⚠  No .run.json files found to merge.")
         else:
-            sft_df, pref_df, stats = merge_outputs(csvs, out_dir)
+            sft_df, pref_df, stats = merge_outputs(run_files, out_dir)
             print(f"✅ evalflow_sft.csv          — {len(sft_df)} rows")
             print(f"✅ evalflow_preferences.csv  — {len(pref_df)} preference pairs")
             print(f"   Tasks     : {stats['tasks']}")
