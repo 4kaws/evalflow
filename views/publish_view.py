@@ -13,6 +13,21 @@ from textual import work
 from config import config
 from core.uploader import upload_dataset
 
+_STATE_FILE = Path(".evalflow_publish_state.json")
+
+def _load_publish_state() -> dict:
+    try:
+        return json.loads(_STATE_FILE.read_text())
+    except Exception:
+        return {}
+
+def _save_publish_state(state: dict) -> None:
+    try:
+        _STATE_FILE.write_text(json.dumps(state))
+    except Exception:
+        pass
+
+
 _LICENSE_OPTS = [
     ("CC0 1.0 (Public Domain)", "CC0-1.0"),
     ("CC BY 4.0",               "CC BY 4.0"),
@@ -114,6 +129,7 @@ class PublishView(Vertical):
         super().__init__(**kwargs)
         self._sft_path:  Path | None = None
         self._pref_path: Path | None = None
+        self._state: dict = _load_publish_state()
 
     def compose(self) -> ComposeResult:
         yield Static("Publish to Kaggle Datasets", classes="section-title")
@@ -136,6 +152,7 @@ class PublishView(Vertical):
         with Horizontal(classes="field-row"):
             yield Label("Dataset title:", classes="field-label")
             yield Input(
+                value=self._state.get("title", ""),
                 placeholder="e.g. My Benchmark Results",
                 id="title-input",
                 classes="field-input",
@@ -144,6 +161,7 @@ class PublishView(Vertical):
         with Horizontal(classes="field-row"):
             yield Label("Dataset slug:", classes="field-label")
             yield Input(
+                value=self._state.get("slug", ""),
                 placeholder="e.g. my-benchmark-results  (URL-safe, no spaces)",
                 id="slug-input",
                 classes="field-input",
@@ -152,6 +170,7 @@ class PublishView(Vertical):
         with Horizontal(classes="field-row"):
             yield Label("Description:", classes="field-label")
             yield Input(
+                value=self._state.get("description", ""),
                 placeholder="Describe your benchmark and what models were evaluated",
                 id="description-input",
                 classes="field-input",
@@ -161,12 +180,12 @@ class PublishView(Vertical):
             yield Label("License:", classes="field-label")
             yield Select(
                 _LICENSE_OPTS,
-                value="CC0-1.0",
+                value=self._state.get("license", "CC0-1.0"),
                 id="license-select",
                 classes="field-input",
             )
 
-        yield Checkbox("Public dataset", value=True, id="public-switch")
+        yield Checkbox("Public dataset", value=self._state.get("public", True), id="public-switch")
 
         with Horizontal(id="btn-row"):
             yield Button("Publish New",     id="publish-btn", variant="primary")
@@ -200,8 +219,26 @@ class PublishView(Vertical):
     def on_activate(self) -> None:
         self.query_one("#username-input", Input).focus()
 
+    def _save_state(self) -> None:
+        _save_publish_state({
+            "title":       self.query_one("#title-input",       Input).value,
+            "slug":        self.query_one("#slug-input",        Input).value,
+            "description": self.query_one("#description-input", Input).value,
+            "license":     str(self.query_one("#license-select", Select).value),
+            "public":      self.query_one("#public-switch",     Checkbox).value,
+        })
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id in ("title-input", "slug-input", "description-input"):
+            self._save_state()
+
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        if event.checkbox.id == "public-switch":
+            self._save_state()
+
     def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id == "license-select":
+            self._save_state()
             self.app.call_after_refresh(
                 lambda: self.query_one("#public-switch", Checkbox).focus()
             )

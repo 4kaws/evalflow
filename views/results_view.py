@@ -91,7 +91,7 @@ class ResultsView(Vertical):
 
     def on_mount(self) -> None:
         table = self.query_one("#results-table", DataTable)
-        table.add_columns("Task", "Model", "Score", "Question", "Ground Truth", "LLM Answer (preview)")
+        table.add_columns("Task", "Model", "Score", "Question", "LLM Answer (preview)")
 
     def on_activate(self) -> None:
         self.query_one("#file-select", Select).focus()
@@ -105,19 +105,26 @@ class ResultsView(Vertical):
         if not output_dir.exists():
             return
 
-        csvs = sorted(output_dir.glob("*.csv"), key=lambda p: p.stat().st_mtime, reverse=True)
-        if not csvs:
+        # Show raw .run.json files; also include merged evalflow_sft.csv if present
+        run_files = sorted(output_dir.glob("*.run.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        merged    = [p for p in [output_dir / "evalflow_sft.csv"] if p.exists()]
+        all_files = merged + run_files
+        if not all_files:
             return
 
         file_select = self.query_one("#file-select", Select)
-        file_select.set_options([(p.name, str(p)) for p in csvs])
-        if csvs:
-            file_select.value = str(csvs[0])
-            self._load_file(csvs[0])
+        file_select.set_options([(p.name, str(p)) for p in all_files])
+        file_select.value = str(all_files[0])
+        self._load_file(all_files[0])
 
     def _load_file(self, path: Path) -> None:
         try:
-            self._df = pd.read_csv(path)
+            if path.suffix == ".json" or path.name.endswith(".run.json"):
+                from core.merger import parse_run_json
+                row, _ = parse_run_json(path)
+                self._df = pd.DataFrame([row]) if row else pd.DataFrame()
+            else:
+                self._df = pd.read_csv(path)
         except Exception as exc:
             self.query_one("#stats-bar").update(f"❌ Failed to load: {exc}")
             return
@@ -162,11 +169,10 @@ class ResultsView(Vertical):
         tasks   = _col("task_name")
         models  = [m.split("/")[-1] for m in _col("model_name")]
         scores  = ["pass" if s == 1 else "fail" for s in (df["score"].tolist() if "score" in df.columns else [0] * len(df))]
-        qs      = [_trunc(q, 55) for q in _col("question")]
-        gts     = [_trunc(g, 35) for g in _col("ground_truth")]
-        answers = [_trunc(a, 55) for a in _col("llm_response")]
+        qs      = [_trunc(q, 60) for q in _col("question")]
+        answers = [_trunc(a, 60) for a in _col("llm_response")]
 
-        table.add_rows(zip(tasks, models, scores, qs, gts, answers))
+        table.add_rows(zip(tasks, models, scores, qs, answers))
 
         total = len(df)
         passed = df["score"].sum() if "score" in df.columns else 0
@@ -200,9 +206,10 @@ class ResultsView(Vertical):
         if idx >= len(self._filtered_df):
             return
         row = self._filtered_df.iloc[idx]
+        reasoning = str(row.get("reasoning", "")).strip()
         detail = (
             f"[bold]Question:[/bold] {row.get('question', '')}\n\n"
-            f"[bold]Ground Truth:[/bold] {row.get('ground_truth', '')}\n\n"
             f"[bold]LLM Response:[/bold] {str(row.get('llm_response', ''))[:400]}"
+            + (f"\n\n[bold]Failed assertions:[/bold] {reasoning}" if reasoning else "")
         )
         self.query_one("#detail-panel").update(detail)

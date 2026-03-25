@@ -78,6 +78,7 @@ from textual.widgets import ContentSwitcher, Footer, Static
 from views.help_view import HelpView
 from views.leaderboard_view import LeaderboardView
 from views.merge_view import MergeView
+from views.monitor_view import MonitorView
 from views.publish_view import PublishView
 from views.pull_view import PullView
 from views.results_view import ResultsView
@@ -104,6 +105,7 @@ NAV_ITEMS = [
     ("leaderboard", "Leaderboard", "3"),
     ("merge",       "Merge",       "4"),
     ("publish",     "Publish",     "5"),
+    ("monitor",     "Monitor",     "6"),
 ]
 
 
@@ -180,6 +182,7 @@ class EvalflowApp(App):
         Binding("3",      "nav_leaderboard", "Leaderboard", show=True),
         Binding("4",      "nav_merge",       "Merge",       show=True),
         Binding("5",      "nav_publish",     "Publish",     show=True),
+        Binding("6",      "nav_monitor",     "Monitor",     show=True),
         Binding("escape", "unfocus",         "Unfocus",     show=False),
         Binding("down",   "focus_next",      "",            show=False),
         Binding("up",     "focus_previous",  "",            show=False),
@@ -219,6 +222,7 @@ class EvalflowApp(App):
                 yield LeaderboardView(id="leaderboard")
                 yield MergeView(id="merge")
                 yield PublishView(id="publish")
+                yield MonitorView(id="monitor")
         yield Footer()
         yield HelpView(id="help-overlay")   # rendered on overlay layer
 
@@ -253,6 +257,7 @@ class EvalflowApp(App):
     def action_nav_leaderboard(self): self.switch_view("leaderboard")
     def action_nav_merge(self):       self.switch_view("merge")
     def action_nav_publish(self):     self.switch_view("publish")
+    def action_nav_monitor(self):     self.switch_view("monitor")
 
 
 # ------------------------------------------------------------------ #

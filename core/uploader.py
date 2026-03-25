@@ -3,9 +3,12 @@
 import json
 import os
 import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
+
+import pandas as pd
 
 
 @dataclass
@@ -57,9 +60,59 @@ def prepare_dataset_folder(
     return folder
 
 
+def fetch_and_append_existing(
+    api,
+    username: str,
+    slug: str,
+    staging: Path,
+    log: Callable[[str], None],
+) -> None:
+    """
+    Download the current version of username/slug from Kaggle, then concatenate
+    its evalflow_sft.csv and evalflow_preferences.csv with the files already in
+    `staging`, deduplicating in place.  Overwrites the files in staging.
+    Silently skips if the dataset doesn't exist yet or download fails.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            log(f">> Fetching existing dataset {username}/{slug} …")
+            api.dataset_download_files(
+                dataset=f"{username}/{slug}",
+                path=tmp,
+                unzip=True,
+                quiet=True,
+            )
+        except Exception as exc:
+            log(f"   (could not fetch existing data — treating as new: {exc})")
+            return
+
+        for fname in ("evalflow_sft.csv", "evalflow_preferences.csv"):
+            old_path = Path(tmp) / fname
+            new_path = staging / fname
+            if not old_path.exists() or not new_path.exists():
+                continue
+            try:
+                old_df = pd.read_csv(old_path)
+                new_df = pd.read_csv(new_path)
+                combined = pd.concat([old_df, new_df], ignore_index=True)
+                dedup_cols = (
+                    ["task_name", "model_name", "question", "llm_response"]
+                    if fname == "evalflow_sft.csv"
+                    else ["task_name", "question", "chosen_model", "rejected_model"]
+                )
+                existing_dedup = [c for c in dedup_cols if c in combined.columns]
+                if existing_dedup:
+                    combined = combined.drop_duplicates(subset=existing_dedup, keep="last")
+                combined.to_csv(new_path, index=False)
+                log(f"   + merged {fname}: {len(old_df)} existing + {len(new_df)} new = {len(combined)} rows")
+            except Exception as exc:
+                log(f"   [!] Could not merge {fname}: {exc}")
+
+
 def upload_dataset(
     folder: Path,
     is_update: bool = False,
+    append: bool = True,
     log_cb: Optional[Callable[[str], None]] = None,
 ) -> UploadResult:
     """
@@ -87,6 +140,13 @@ def upload_dataset(
         )
 
     try:
+        if is_update and append:
+            meta_path = folder / "dataset-metadata.json"
+            with open(meta_path) as f:
+                meta = json.load(f)
+            owner, slug = meta.get("id", "/").split("/", 1)
+            fetch_and_append_existing(api, owner, slug, folder, log)
+
         if is_update:
             log("📤 Updating existing dataset…")
             api.dataset_create_version(
