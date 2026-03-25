@@ -12,8 +12,12 @@ venv/
 .env
 .env.bak
 .evalflow_slug_history.json
+.evalflow_publish_state.json
 outputs/
 data/
+
+# Runtime logs
+monitor.log
 
 # Kaggle
 kaggle.json
