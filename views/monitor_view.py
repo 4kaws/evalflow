@@ -658,20 +658,37 @@ class MonitorView(Vertical):
 
         write("\n>> Pushing manifest to GitHub …")
         manifest_path = str(Path(_WORKDIR) / ".evalflow_manifest.json")
-        steps = [
-            (["git", "-C", _WORKDIR, "add", manifest_path],        "Staging manifest …"),
-            (["git", "-C", _WORKDIR, "commit", "-m", "update: monitor manifest [evalflow]"], "Committing …"),
-            (["git", "-C", _WORKDIR, "push"],                       "Pushing …"),
-        ]
-        for cmd, label in steps:
-            write(f"   {label}")
-            r = subprocess.run(cmd, capture_output=True, text=True)
-            if r.returncode != 0:
-                if "nothing to commit" in r.stdout + r.stderr:
-                    write("   (nothing to commit — manifest already up to date)")
-                    continue
-                write(f"   [x] {r.stderr.strip() or r.stdout.strip()}")
+
+        write("   Staging manifest …")
+        r = subprocess.run(["git", "-C", _WORKDIR, "add", manifest_path], capture_output=True, text=True)
+        if r.returncode != 0:
+            write(f"   [x] {r.stderr.strip() or r.stdout.strip()}")
+            return
+
+        write("   Committing …")
+        r = subprocess.run(
+            ["git", "-C", _WORKDIR, "commit", "-m", "update: monitor manifest [evalflow]"],
+            capture_output=True, text=True,
+        )
+        if r.returncode != 0:
+            if "nothing to commit" in r.stdout + r.stderr:
+                write("   (nothing to commit — manifest already up to date)")
                 return
+            write(f"   [x] {r.stderr.strip() or r.stdout.strip()}")
+            return
+
+        write("   Pushing …")
+        try:
+            r = subprocess.run(
+                ["git", "-C", _WORKDIR, "push"],
+                capture_output=True, text=True, timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            write("   [x] Push timed out — check that git is configured with SSH keys or a credential helper.")
+            return
+        if r.returncode != 0:
+            write(f"   [x] {r.stderr.strip() or r.stdout.strip()}")
+            return
         write("   ✅ Manifest pushed — GitHub Actions will use updated watchers on next run.")
 
     # ------------------------------------------------------------------ #
