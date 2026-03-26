@@ -236,6 +236,7 @@ class MonitorView(Vertical):
             yield Button("Add / Update Watcher", id="add-btn", variant="primary")
             yield Button("Force Republish Selected", id="republish-btn", variant="default")
             yield Button("Push to GitHub", id="push-github-btn", variant="default")
+            yield Button("Sync Watchers → Secret", id="sync-secret-btn", variant="default")
 
         with Horizontal(id="log-title-row"):
             yield Static("Monitor Log", classes="section-title")
@@ -407,6 +408,8 @@ class MonitorView(Vertical):
             self._load_log_file()
         elif bid == "push-github-btn":
             self._push_to_github()
+        elif bid == "sync-secret-btn":
+            self._sync_to_github_secret()
 
     def action_check_all(self) -> None:
         self._check_all()
@@ -682,6 +685,60 @@ class MonitorView(Vertical):
         result = upload_dataset(folder=staging, is_update=True, append=True, log_cb=write)
         if not result.success:
             write(f"   [x] {result.error}")
+
+    # ------------------------------------------------------------------ #
+    #  Sync watcher manifest to GitHub Actions secret                    #
+    # ------------------------------------------------------------------ #
+
+    @work(thread=True)
+    def _sync_to_github_secret(self) -> None:
+        log = self.query_one("#monitor-log", Log)
+
+        def write(msg: str) -> None:
+            self.app.call_from_thread(log.write_line, msg)
+
+        import requests as _req
+        from base64 import b64encode, b64decode
+
+        token = config.github_token
+        repo  = config.github_repo
+        if not token or not repo:
+            write("[x] GITHUB_TOKEN and GITHUB_REPO must be set in .env")
+            write("    GITHUB_TOKEN : a PAT with 'secrets' scope")
+            write("    GITHUB_REPO  : e.g. 4kaws/evalflow")
+            return
+
+        write("\n>> Syncing watcher manifest to GitHub secret …")
+        headers = {
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github+json",
+        }
+
+        r = _req.get(f"https://api.github.com/repos/{repo}/actions/secrets/public-key", headers=headers)
+        if r.status_code != 200:
+            write(f"[x] Could not fetch repo public key: {r.status_code}")
+            return
+        pk_data = r.json()
+
+        try:
+            from nacl import encoding, public as nacl_public
+            pk  = nacl_public.PublicKey(b64decode(pk_data["key"]), encoding.RawEncoder)
+            box = nacl_public.SealedBox(pk)
+            encrypted = b64encode(box.encrypt(json.dumps(self._manifest, indent=2).encode())).decode()
+        except Exception as exc:
+            write(f"[x] Encryption failed: {exc}")
+            write("    Run: pip install PyNaCl")
+            return
+
+        r = _req.put(
+            f"https://api.github.com/repos/{repo}/actions/secrets/EVALFLOW_MANIFEST",
+            headers=headers,
+            json={"encrypted_value": encrypted, "key_id": pk_data["key_id"]},
+        )
+        if r.status_code in (201, 204):
+            write(f"✅ EVALFLOW_MANIFEST secret updated ({len(self._manifest)} watcher(s))")
+        else:
+            write(f"[x] Failed to update secret: {r.status_code} {r.text}")
 
     # ------------------------------------------------------------------ #
     #  Push manifest to GitHub                                           #

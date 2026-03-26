@@ -28,10 +28,21 @@ MANIFEST_FILE = Path(".evalflow_manifest.json")
 # ── Manifest ──────────────────────────────────────────────────────────────────
 
 def load_manifest() -> dict:
-    try:
-        return json.loads(MANIFEST_FILE.read_text())
-    except Exception:
-        return {}
+    # Local file takes priority (TUI / local runs)
+    if MANIFEST_FILE.exists():
+        try:
+            return json.loads(MANIFEST_FILE.read_text())
+        except Exception:
+            pass
+    # Fall back to env var injected by GitHub Actions
+    import os
+    raw = os.getenv("EVALFLOW_MANIFEST", "").strip()
+    if raw:
+        try:
+            return json.loads(raw)
+        except Exception:
+            pass
+    return {}
 
 
 def save_manifest(manifest: dict) -> None:
