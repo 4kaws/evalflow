@@ -11,6 +11,7 @@ venv/
 # App data — credentials and session files, never commit these
 .env
 .env.bak
+.evalflow_manifest.json
 .evalflow_slug_history.json
 .evalflow_publish_state.json
 outputs/
