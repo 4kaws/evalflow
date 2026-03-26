@@ -1,6 +1,7 @@
 """Monitor view — watch benchmarks for new tasks and auto-pull/publish."""
 
 import json
+import re as _re
 import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -30,49 +31,43 @@ def _save_manifest(manifest: dict) -> None:
         pass
 
 
-_CRON_MARKER = "# evalflow-monitor"
-_WORKDIR     = str(Path(__file__).parent.parent)
-# Prefer the project venv if it exists, fall back to system python3
-_VENV_PYTHON = Path(_WORKDIR) / "venv" / "bin" / "python"
-_PYTHON      = str(_VENV_PYTHON) if _VENV_PYTHON.exists() else "python3"
-_SCRIPT      = str(Path(__file__).parent.parent / "monitor.py")
+_WORKDIR       = str(Path(__file__).parent.parent)
+_WORKFLOW_FILE = Path(__file__).parent.parent / ".github" / "workflows" / "evalflow_ci.yml"
 
 
-def _cron_line(hh: int, mm: int) -> str:
-    return (
-        f"{mm} {hh} * * *  cd {_WORKDIR} && {_PYTHON} {_SCRIPT} --all"
-        f" >> {_WORKDIR}/monitor.log 2>&1  {_CRON_MARKER}"
-    )
+def _utc_to_local(utc_hh: int, utc_mm: int) -> tuple[int, int]:
+    offset_mins = int(datetime.now().astimezone().utcoffset().total_seconds() // 60)
+    total = (utc_hh * 60 + utc_mm + offset_mins) % (24 * 60)
+    return divmod(total, 60)
 
 
-def _read_crontab() -> str:
-    try:
-        r = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
-        return r.stdout if r.returncode == 0 else ""
-    except Exception:
-        return ""
-
-
-def _write_crontab(content: str) -> None:
-    subprocess.run(["crontab", "-"], input=content, text=True, check=True)
+def _local_to_utc(local_hh: int, local_mm: int) -> tuple[int, int]:
+    offset_mins = int(datetime.now().astimezone().utcoffset().total_seconds() // 60)
+    total = (local_hh * 60 + local_mm - offset_mins) % (24 * 60)
+    return divmod(total, 60)
 
 
 def _get_schedule() -> tuple[bool, int, int]:
-    for line in _read_crontab().splitlines():
-        if _CRON_MARKER in line and not line.strip().startswith("#"):
-            parts = line.split()
-            try:
-                return True, int(parts[1]), int(parts[0])
-            except (IndexError, ValueError):
-                pass
-    return False, 11, 0
+    """Read schedule from GitHub Actions workflow. Returns (found, local_hh, local_mm)."""
+    try:
+        content = _WORKFLOW_FILE.read_text()
+        m = _re.search(r'cron:\s*"(\d+)\s+(\d+)\s+\*\s+\*\s+\*"', content)
+        if m:
+            utc_mm, utc_hh = int(m.group(1)), int(m.group(2))
+            return True, *_utc_to_local(utc_hh, utc_mm)
+    except Exception:
+        pass
+    return False, 14, 0
 
 
-def _set_schedule(enabled: bool, hh: int, mm: int) -> None:
-    lines = [l for l in _read_crontab().splitlines() if _CRON_MARKER not in l]
-    if enabled:
-        lines.append(_cron_line(hh, mm))
-    _write_crontab("\n".join(lines) + "\n")
+def _set_schedule_in_workflow(hh: int, mm: int) -> None:
+    """Update the cron expression in the GitHub Actions workflow file."""
+    utc_hh, utc_mm = _local_to_utc(hh, mm)
+    tz = datetime.now().astimezone().strftime("%Z")
+    content = _WORKFLOW_FILE.read_text()
+    new_cron = f'    - cron: "{utc_mm} {utc_hh} * * *"  # every day at {hh:02d}:{mm:02d} {tz}'
+    content = _re.sub(r'[ \t]*- cron: "[^"]*"[^\n]*', new_cron, content)
+    _WORKFLOW_FILE.write_text(content)
 
 
 def _next_run_text(enabled: bool, hh: int, mm: int) -> str:
@@ -251,9 +246,8 @@ class MonitorView(Vertical):
 
         with Horizontal(id="schedule-row"):
             yield Label("Run daily at:", classes="field-label")
-            yield Input(value="11:00", id="time-input")
-            yield Checkbox("Enable", value=False, id="schedule-enable")
-            yield Button("Save Schedule", id="save-schedule-btn", variant="default")
+            yield Input(placeholder="HH:MM", id="time-input")
+            yield Button("Save & Push Schedule", id="save-schedule-btn", variant="primary")
 
         yield Static("", id="schedule-panel")
 
@@ -270,28 +264,72 @@ class MonitorView(Vertical):
         self._load_log_file()
 
     def _load_schedule_ui(self) -> None:
-        enabled, hh, mm = _get_schedule()
-        self.query_one("#time-input", Input).value = f"{hh:02d}:{mm:02d}"
-        self.query_one("#schedule-enable", Checkbox).value = enabled
-        self.query_one("#schedule-panel").update(_next_run_text(enabled, hh, mm))
+        found, hh, mm = _get_schedule()
+        self.query_one("#time-input", Input).value = f"{hh:02d}:{mm:02d}" if found else ""
+        self.query_one("#schedule-panel").update(_next_run_text(found, hh, mm))
 
     def _save_schedule(self) -> None:
         log = self.query_one("#monitor-log", Log)
         time_str = self.query_one("#time-input", Input).value.strip()
-        enabled  = self.query_one("#schedule-enable", Checkbox).value
         try:
             hh, mm = [int(x) for x in time_str.split(":")]
             assert 0 <= hh <= 23 and 0 <= mm <= 59
         except Exception:
-            log.write_line("[x] Invalid time — use HH:MM format (e.g. 11:00)")
+            log.write_line("[x] Invalid time — use HH:MM format (e.g. 14:00)")
             return
+        self._push_schedule(hh, mm)
+
+    @work(thread=True)
+    def _push_schedule(self, hh: int, mm: int) -> None:
+        log = self.query_one("#monitor-log", Log)
+
+        def write(msg: str) -> None:
+            self.app.call_from_thread(log.write_line, msg)
+
         try:
-            _set_schedule(enabled, hh, mm)
-            status = _next_run_text(enabled, hh, mm)
-            self.query_one("#schedule-panel").update(status)
-            log.write_line(f"[ok] Schedule {'enabled' if enabled else 'disabled'}: {status}")
+            _set_schedule_in_workflow(hh, mm)
+            utc_hh, utc_mm = _local_to_utc(hh, mm)
+            tz = datetime.now().astimezone().strftime("%Z")
+            write(f"\n>> Schedule set to {hh:02d}:{mm:02d} {tz} ({utc_hh:02d}:{utc_mm:02d} UTC) — pushing to GitHub …")
         except Exception as exc:
-            log.write_line(f"[x] Could not update crontab: {exc}")
+            write(f"[x] Could not update workflow file: {exc}")
+            return
+
+        r = subprocess.run(
+            ["git", "-C", _WORKDIR, "add", str(_WORKFLOW_FILE)],
+            capture_output=True, text=True,
+        )
+        if r.returncode != 0:
+            write(f"[x] git add failed: {r.stderr.strip()}")
+            return
+
+        r = subprocess.run(
+            ["git", "-C", _WORKDIR, "commit", "-m", f"chore: set monitor schedule to {hh:02d}:{mm:02d} {tz}"],
+            capture_output=True, text=True,
+        )
+        if r.returncode != 0:
+            if "nothing to commit" in r.stdout + r.stderr:
+                write("   (schedule unchanged — nothing to push)")
+            else:
+                write(f"[x] git commit failed: {r.stderr.strip()}")
+            return
+
+        try:
+            r = subprocess.run(
+                ["git", "-C", _WORKDIR, "push"],
+                capture_output=True, text=True, timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            write("[x] Push timed out")
+            return
+
+        if r.returncode != 0:
+            write(f"[x] git push failed: {r.stderr.strip()}")
+            return
+
+        write("✅ Schedule pushed — GitHub Actions will run at the new time.")
+        status = _next_run_text(True, hh, mm)
+        self.app.call_from_thread(self.query_one("#schedule-panel").update, status)
 
     # ------------------------------------------------------------------ #
     #  Table                                                               #
