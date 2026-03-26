@@ -29,7 +29,7 @@ on:
         options: ["true", "false"]
 
   schedule:
-    - cron: "24 13 * * *"  # every day at 15:24 EET
+    - cron: "52 13 * * *"  # every day at 15:52 EET
 
 env:
   PYTHON_VERSION: "3.11"
@@ -58,9 +58,10 @@ jobs:
 
       - name: Run monitor (all watchers)
         env:
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
-          KAGGLE_KEY:      ${{ secrets.KAGGLE_KEY }}
-          OUTPUT_DIR:      outputs
+          KAGGLE_USERNAME:    ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY:         ${{ secrets.KAGGLE_KEY }}
+          EVALFLOW_MANIFEST:  ${{ secrets.EVALFLOW_MANIFEST }}
+          OUTPUT_DIR:         outputs
         run: python monitor.py --all
 
       - name: Upload merged CSVs as artifact
