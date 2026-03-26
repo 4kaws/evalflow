@@ -2,5 +2,5 @@ textual>=0.89.0
 pandas>=2.0.0
 python-dotenv>=1.0.0
 kaggle>=1.6.0
-kagglesdk>=1.0.0
+kagglesdk>=0.1.0
 requests>=2.31.0
