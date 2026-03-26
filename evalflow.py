@@ -177,6 +177,7 @@ class EvalflowApp(App):
     BINDINGS = [
         Binding("q",      "quit",            "Quit",        show=True),
         Binding("?",      "toggle_help",     "Help",        show=True),
+        Binding("w",      "open_wizard",     "Setup",       show=True),
         Binding("1",      "nav_pull",        "Pull",        show=True),
         Binding("2",      "nav_results",     "Results",     show=True),
         Binding("3",      "nav_leaderboard", "Leaderboard", show=True),
@@ -213,7 +214,7 @@ class EvalflowApp(App):
                         item.add_class("active")
                     yield item
                 yield Static(
-                    "[dim]─────────────────\n?  Help\nq  Quit\nEsc  Unfocus[/dim]",
+                    "[dim]─────────────────\n?  Help\nw  Setup\nq  Quit\nEsc  Unfocus[/dim]",
                     id="sidebar-hint",
                 )
             with ContentSwitcher(id="content", initial="pull"):
@@ -258,6 +259,16 @@ class EvalflowApp(App):
     def action_nav_merge(self):       self.switch_view("merge")
     def action_nav_publish(self):     self.switch_view("publish")
     def action_nav_monitor(self):     self.switch_view("monitor")
+
+    async def action_open_wizard(self) -> None:
+        from setup_wizard import SetupWizard
+        with self.app.suspend():
+            await SetupWizard().run_async()
+        # Reload credentials after wizard closes
+        from dotenv import load_dotenv
+        import config as _cfg
+        load_dotenv(override=True)
+        _cfg.config.__dict__.update(_cfg.Config.load().__dict__)
 
 
 # ------------------------------------------------------------------ #

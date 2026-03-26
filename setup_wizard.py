@@ -45,6 +45,7 @@ ENV_FILE = Path(".env")
 STEPS = [
     "welcome",
     "kaggle_api",
+    "github",
     "done",
 ]
 
@@ -189,7 +190,41 @@ class SetupWizard(App):
                 classes="hidden",
             )
 
-            # Step 2: Done
+            # Step 2: GitHub credentials
+            yield WizardStep(
+                Static("GitHub Integration (optional)", classes="step-title"),
+                Static(
+                    "Used to sync your watcher list to GitHub Actions as a secret,\n"
+                    "so the daily monitor can run in CI without exposing your config.",
+                    classes="step-body",
+                ),
+                Static(
+                    "How to create a token:\n"
+                    "  1. Go to github.com → Settings → Developer settings\n"
+                    "  2. Personal access tokens → Fine-grained tokens → Generate new token\n"
+                    "  3. Under 'Repository permissions' → Secrets → Read and write\n"
+                    "  4. Copy the token below\n\n"
+                    "  GITHUB_REPO format: owner/repo  (e.g. 4kaws/evalflow)",
+                    classes="note-info",
+                ),
+                Label("GITHUB_TOKEN:", classes="field-label"),
+                Input(
+                    value=self._existing.get("GITHUB_TOKEN", ""),
+                    placeholder="github_pat_...",
+                    id="github-token",
+                    password=True,
+                ),
+                Label("GITHUB_REPO:", classes="field-label"),
+                Input(
+                    value=self._existing.get("GITHUB_REPO", ""),
+                    placeholder="owner/repo",
+                    id="github-repo",
+                ),
+                id="step-github",
+                classes="hidden",
+            )
+
+            # Step 3: Done
             yield WizardStep(
                 Static("All done!", classes="step-title"),
                 Static("", id="done-summary", classes="step-body"),
@@ -209,7 +244,7 @@ class SetupWizard(App):
         self.query_one("#next-btn", Button).focus()
 
     def _update_step(self) -> None:
-        step_ids = ["step-welcome", "step-kaggle-api", "step-done"]
+        step_ids = ["step-welcome", "step-kaggle-api", "step-github", "step-done"]
         for i, sid in enumerate(step_ids):
             step = self.query_one(f"#{sid}")
             step.set_class(i != self._step_index, "hidden")
@@ -282,7 +317,7 @@ class SetupWizard(App):
         self._launch_app()
 
     def _focus_first_input(self) -> None:
-        step_ids = ["step-welcome", "step-kaggle-api", "step-done"]
+        step_ids = ["step-welcome", "step-kaggle-api", "step-github", "step-done"]
         try:
             step = self.query_one(f"#{step_ids[self._step_index]}")
             inputs = step.query("Input")
@@ -301,6 +336,11 @@ class SetupWizard(App):
                 "OUTPUT_DIR":      "outputs",
                 "DATA_DIR":        "data",
             })
+        elif self._step_index == 2:  # github credentials
+            self._config.update({
+                "GITHUB_TOKEN": self.query_one("#github-token", Input).value.strip(),
+                "GITHUB_REPO":  self.query_one("#github-repo",  Input).value.strip(),
+            })
 
     def _write_env(self) -> None:
         if ENV_FILE.exists():
@@ -318,9 +358,15 @@ class SetupWizard(App):
 
         ENV_FILE.write_text("\n".join(lines) + "\n")
 
-        username = self._config.get("KAGGLE_USERNAME", "")
-        has_key  = bool(self._config.get("KAGGLE_KEY"))
-        status   = "Ready." if (username and has_key) else "Warning: credentials incomplete — pull/publish may fail."
+        username   = self._config.get("KAGGLE_USERNAME", "")
+        has_key    = bool(self._config.get("KAGGLE_KEY"))
+        has_github = bool(self._config.get("GITHUB_TOKEN")) and bool(self._config.get("GITHUB_REPO"))
+        if username and has_key and has_github:
+            status = "Ready. GitHub sync enabled."
+        elif username and has_key:
+            status = "Ready. (GitHub sync not configured — 'Sync Watchers → Secret' won't work)"
+        else:
+            status = "Warning: Kaggle credentials incomplete — pull/publish may fail."
         self.query_one("#done-summary").update(
             f"Configuration saved to .env\n\n"
             + "\n".join(summary)

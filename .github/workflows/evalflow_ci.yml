@@ -62,6 +62,8 @@ jobs:
           KAGGLE_USERNAME:    ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY:         ${{ secrets.KAGGLE_KEY }}
           EVALFLOW_MANIFEST:  ${{ secrets.EVALFLOW_MANIFEST }}
+          GITHUB_TOKEN:       ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO:        ${{ github.repository }}
           OUTPUT_DIR:         outputs
         run: python monitor.py --all
 

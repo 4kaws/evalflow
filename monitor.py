@@ -201,6 +201,7 @@ def run_watcher(slug: str, entry: dict, out_dir: Path, force: bool = False) -> N
     print(f"   evalflow_sft.csv         — {len(sft_df)} rows")
     print(f"   evalflow_preferences.csv — {len(pref_df)} preference pairs")
 
+    publish_ok = True
     if entry.get("publish") and not entry.get("dataset_slug"):
         print("   ⚠  Auto-publish is on but no dataset_slug configured — skipping publish.", file=sys.stderr)
     if entry.get("publish") and entry.get("dataset_slug") and entry.get("dataset_title"):
@@ -226,11 +227,50 @@ def run_watcher(slug: str, entry: dict, out_dir: Path, force: bool = False) -> N
             print(f"   ✅ {result.url}")
         else:
             print(f"   ❌ {result.error}", file=sys.stderr)
+            publish_ok = False
 
-    # Only mark tasks as known if files were actually pulled (403 = no runs yet → retry)
-    entry["known_tasks"]  = list(known | pulled_tasks)
+    # Only mark tasks as known if publish succeeded.
+    # If publish failed, keep them unknown so the next run retries.
+    if publish_ok:
+        entry["known_tasks"] = list(known | pulled_tasks)
+    else:
+        print("   ⚠  Publish failed — tasks will be retried on the next check.", file=sys.stderr)
     entry["last_checked"] = now
     entry["last_pull"]    = now
+
+
+# ── GitHub secret sync ────────────────────────────────────────────────────────
+
+def _sync_manifest_to_github_secret(manifest: dict) -> None:
+    """Push updated manifest back to EVALFLOW_MANIFEST secret so next run is up to date."""
+    import os, requests
+    from base64 import b64encode, b64decode
+
+    token = os.getenv("GITHUB_TOKEN", "")
+    repo  = os.getenv("GITHUB_REPO", "")
+    if not token or not repo:
+        return  # running locally without GitHub config — skip silently
+
+    try:
+        headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github+json"}
+        r = requests.get(f"https://api.github.com/repos/{repo}/actions/secrets/public-key", headers=headers)
+        r.raise_for_status()
+        pk_data = r.json()
+
+        from nacl import encoding, public as nacl_public
+        pk  = nacl_public.PublicKey(b64decode(pk_data["key"]), encoding.RawEncoder)
+        box = nacl_public.SealedBox(pk)
+        encrypted = b64encode(box.encrypt(json.dumps(manifest, indent=2).encode())).decode()
+
+        r = requests.put(
+            f"https://api.github.com/repos/{repo}/actions/secrets/EVALFLOW_MANIFEST",
+            headers=headers,
+            json={"encrypted_value": encrypted, "key_id": pk_data["key_id"]},
+        )
+        r.raise_for_status()
+        print(f"   ✅ EVALFLOW_MANIFEST secret updated on GitHub.")
+    except Exception as exc:
+        print(f"   [!] Could not sync manifest to GitHub secret: {exc}", file=sys.stderr)
 
 
 # ── CLI entry point ───────────────────────────────────────────────────────────
@@ -259,6 +299,7 @@ def main() -> None:
         for slug, entry in manifest.items():
             run_watcher(slug, entry, out_dir, force=args.force)
         save_manifest(manifest)
+        _sync_manifest_to_github_secret(manifest)
         return
 
     if not args.slug:
