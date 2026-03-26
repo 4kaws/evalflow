@@ -5,8 +5,9 @@ on:
   workflow_dispatch:
     inputs:
       notebook_slug:
-        description: "Kaggle notebook slug (username/notebook-name)"
-        required: true
+        description: "Kaggle notebook slug (username/notebook-name) — leave blank to run the monitor instead"
+        required: false
+        default: ""
       notebook_version:
         description: "Notebook version to pull (blank = latest)"
         required: false
@@ -40,7 +41,7 @@ jobs:
   # ------------------------------------------------------------------ #
   monitor:
     name: Daily monitor — all watchers
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.notebook_slug == '')
     runs-on: ubuntu-latest
 
     steps:
@@ -79,7 +80,7 @@ jobs:
   # ------------------------------------------------------------------ #
   run:
     name: Pull ${{ github.event.inputs.notebook_slug }}
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.notebook_slug != ''
     runs-on: ubuntu-latest
 
     steps:
