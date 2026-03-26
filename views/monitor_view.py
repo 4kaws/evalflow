@@ -148,8 +148,8 @@ class MonitorView(Vertical):
     .section-title { color: $primary; text-style: bold; margin-top: 0; margin-bottom: 0; }
 
     #watcher-table {
-        height: 8;
-        min-height: 4;
+        height: 6;
+        min-height: 3;
         border: solid $primary 15%;
         background: $surface;
         margin-bottom: 0;
@@ -170,21 +170,21 @@ class MonitorView(Vertical):
     .field-input { width: 46; }
 
     #add-row { layout: horizontal; height: 3; margin-bottom: 0; }
-    #add-row Button { margin-right: 1; }
+    #add-row Button { margin-right: 1; min-width: 0; }
 
     #btn-row { layout: horizontal; height: 3; margin-top: 0; margin-bottom: 0; }
-    #btn-row Button { margin-right: 1; }
+    #btn-row Button { margin-right: 1; min-width: 0; }
 
     #monitor-log {
         height: 1fr;
-        min-height: 4;
+        min-height: 8;
         border: solid $primary 15%;
         background: $surface;
         margin-top: 0;
     }
 
     #schedule-panel {
-        height: 3;
+        height: 2;
         border: solid $primary 15%;
         background: $surface;
         padding: 0 1;
@@ -192,11 +192,8 @@ class MonitorView(Vertical):
         color: $success;
     }
     #schedule-row { layout: horizontal; height: 3; align: left middle; margin-bottom: 0; }
-    #time-input { width: 16; }
+    #time-input { width: 20; }
     #save-schedule-btn { margin-left: 1; }
-    #log-title-row { layout: horizontal; height: 3; align: left middle; }
-    #log-title-row .section-title { width: 1fr; }
-    #load-log-btn { margin-left: 1; }
 
     #publish-check { margin-bottom: 0; }
     """
@@ -235,12 +232,9 @@ class MonitorView(Vertical):
         with Horizontal(id="add-row"):
             yield Button("Add / Update Watcher", id="add-btn", variant="primary")
             yield Button("Force Republish Selected", id="republish-btn", variant="default")
-            yield Button("Push to GitHub", id="push-github-btn", variant="default")
+            yield Button("Reset & Re-pull Selected", id="repull-btn", variant="warning")
             yield Button("Sync Watchers → Secret", id="sync-secret-btn", variant="default")
 
-        with Horizontal(id="log-title-row"):
-            yield Static("Monitor Log", classes="section-title")
-            yield Button("Load log file", id="load-log-btn", variant="default")
         yield Log(id="monitor-log", highlight=True)
 
         yield Static("Daily Schedule", classes="section-title")
@@ -402,12 +396,14 @@ class MonitorView(Vertical):
                 self._force_republish(slug)
             else:
                 self.query_one("#monitor-log", Log).write_line("[x] Select a watcher row first.")
+        elif bid == "repull-btn":
+            slug = self._selected_slug()
+            if slug:
+                self._reset_and_repull(slug)
+            else:
+                self.query_one("#monitor-log", Log).write_line("[x] Select a watcher row first.")
         elif bid == "save-schedule-btn":
             self._save_schedule()
-        elif bid == "load-log-btn":
-            self._load_log_file()
-        elif bid == "push-github-btn":
-            self._push_to_github()
         elif bid == "sync-secret-btn":
             self._sync_to_github_secret()
 
@@ -422,6 +418,9 @@ class MonitorView(Vertical):
         log   = self.query_one("#monitor-log", Log)
         slug  = self.query_one("#slug-input", Input).value.strip().strip("/")
         ds    = self.query_one("#dataset-slug-input", Input).value.strip()
+        # Strip username prefix if user entered "username/slug" instead of just "slug"
+        if "/" in ds:
+            ds = ds.split("/")[-1]
         title = self.query_one("#dataset-title-input", Input).value.strip()
         pub   = self.query_one("#publish-check", Checkbox).value
 
@@ -594,6 +593,7 @@ class MonitorView(Vertical):
             write(f"   [!] Merge failed: {exc}")
 
         # ── Publish ───────────────────────────────────────────────────
+        publish_ok = True
         if entry.get("publish") and not entry.get("dataset_slug"):
             write("   ⚠  Auto-publish is on but no Dataset slug is set — skipping publish.")
             write("      Edit the watcher: remove it, re-add with Dataset slug + title filled in.")
@@ -621,11 +621,15 @@ class MonitorView(Vertical):
             result = upload_dataset(folder=staging, is_update=True, append=True, log_cb=write)
             if not result.success:
                 write(f"   [x] {result.error}")
+                publish_ok = False
 
         # ── Save manifest ─────────────────────────────────────────────
-        # Only mark tasks as known if we successfully pulled files from them.
-        # Tasks that returned 403 (no runs yet) stay unknown so they are retried.
-        entry["known_tasks"]  = list(known | pulled_tasks)
+        # Only mark tasks as known if files were pulled AND publish succeeded.
+        # If publish failed, keep tasks unknown so the next run retries them.
+        if publish_ok:
+            entry["known_tasks"] = list(known | pulled_tasks)
+        else:
+            write("   [!] Publish failed — tasks will be retried on the next check.")
         entry["last_checked"] = now
         entry["last_pull"]    = now
         self._manifest[slug]  = entry
@@ -687,6 +691,19 @@ class MonitorView(Vertical):
             write(f"   [x] {result.error}")
 
     # ------------------------------------------------------------------ #
+    #  Reset known tasks and re-pull everything                          #
+    # ------------------------------------------------------------------ #
+
+    def _reset_and_repull(self, slug: str) -> None:
+        log = self.query_one("#monitor-log", Log)
+        entry = self._manifest.get(slug, {})
+        entry["known_tasks"] = []
+        self._manifest[slug] = entry
+        _save_manifest(self._manifest)
+        log.write_line(f"[ok] Reset known tasks for {slug} — re-pulling all tasks now …")
+        self._check_one(slug)
+
+    # ------------------------------------------------------------------ #
     #  Sync watcher manifest to GitHub Actions secret                    #
     # ------------------------------------------------------------------ #
 
@@ -739,52 +756,6 @@ class MonitorView(Vertical):
             write(f"✅ EVALFLOW_MANIFEST secret updated ({len(self._manifest)} watcher(s))")
         else:
             write(f"[x] Failed to update secret: {r.status_code} {r.text}")
-
-    # ------------------------------------------------------------------ #
-    #  Push manifest to GitHub                                           #
-    # ------------------------------------------------------------------ #
-
-    @work(thread=True)
-    def _push_to_github(self) -> None:
-        log = self.query_one("#monitor-log", Log)
-
-        def write(msg: str):
-            self.app.call_from_thread(log.write_line, msg)
-
-        write("\n>> Pushing manifest to GitHub …")
-        manifest_path = str(Path(_WORKDIR) / ".evalflow_manifest.json")
-
-        write("   Staging manifest …")
-        r = subprocess.run(["git", "-C", _WORKDIR, "add", manifest_path], capture_output=True, text=True)
-        if r.returncode != 0:
-            write(f"   [x] {r.stderr.strip() or r.stdout.strip()}")
-            return
-
-        write("   Committing …")
-        r = subprocess.run(
-            ["git", "-C", _WORKDIR, "commit", "-m", "update: monitor manifest [evalflow]"],
-            capture_output=True, text=True,
-        )
-        if r.returncode != 0:
-            if "nothing to commit" in r.stdout + r.stderr:
-                write("   (nothing to commit — manifest already up to date)")
-                return
-            write(f"   [x] {r.stderr.strip() or r.stdout.strip()}")
-            return
-
-        write("   Pushing …")
-        try:
-            r = subprocess.run(
-                ["git", "-C", _WORKDIR, "push"],
-                capture_output=True, text=True, timeout=30,
-            )
-        except subprocess.TimeoutExpired:
-            write("   [x] Push timed out — check that git is configured with SSH keys or a credential helper.")
-            return
-        if r.returncode != 0:
-            write(f"   [x] {r.stderr.strip() or r.stdout.strip()}")
-            return
-        write("   ✅ Manifest pushed — GitHub Actions will use updated watchers on next run.")
 
     # ------------------------------------------------------------------ #
     #  Log file                                                            #
