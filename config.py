@@ -15,6 +15,8 @@ class Config:
     data_dir: Path = Path("data")
     kaggle_username: str = ""
     kaggle_key: str = ""
+    github_token: str = ""
+    github_repo: str = ""
 
     @classmethod
     def load(cls) -> "Config":
@@ -23,6 +25,8 @@ class Config:
             data_dir=Path(os.getenv("DATA_DIR", "data")),
             kaggle_username=os.getenv("KAGGLE_USERNAME", ""),
             kaggle_key=os.getenv("KAGGLE_KEY", ""),
+            github_token=os.getenv("GITHUB_TOKEN", ""),
+            github_repo=os.getenv("GITHUB_REPO", ""),
         )
 
 
