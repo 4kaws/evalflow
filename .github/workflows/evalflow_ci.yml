@@ -29,7 +29,7 @@ on:
         options: ["true", "false"]
 
   schedule:
-    - cron: "0 6 * * *"   # every day at 08:00 EET (UTC+2) / 09:00 EEST (UTC+3)
+    - cron: "0 12 * * *"  # every day at 14:00 EET (UTC+2) / 15:00 EEST (UTC+3)
 
 env:
   PYTHON_VERSION: "3.11"
