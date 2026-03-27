@@ -162,15 +162,23 @@ python evalflow.py
 
 ## First Run
 
-The setup wizard launches automatically on first run and asks for your Kaggle credentials.
-You can also skip it and create a `.env` file manually:
+The setup wizard launches automatically on first run and collects:
+
+- **Kaggle credentials** — username and legacy API key
+  Get yours at: **kaggle.com → Settings → Account → Legacy API Credentials → Create Legacy API Key**
+- **GitHub token and repo** — needed for the daily cloud schedule to sync your watcher config
+  Create a fine-grained PAT at **github.com → Settings → Developer settings → Fine-grained tokens** with **Secrets: read & write** permission on your repo
+
+You can also skip the wizard and create a `.env` file manually:
 
 ```env
 KAGGLE_USERNAME=your-username
 KAGGLE_KEY=your-legacy-api-key
+GITHUB_TOKEN=your-github-pat
+GITHUB_REPO=owner/repo
 ```
 
-Get your key at: **kaggle.com → Settings → Account → Legacy API Credentials → Create Legacy API Key**
+To re-open the wizard at any time, press `w` inside the TUI.
 
 Credentials are saved to `.env` and persist between sessions. All pulled output files are
 wiped on exit so every session starts clean.
@@ -191,6 +199,7 @@ Evalflow is designed to be used entirely from the keyboard.
 | `←` / `→` | Cycle between action buttons |
 | `Enter` | Confirm / activate focused element |
 | `Ctrl+R` | Check all watchers (Monitor tab) |
+| `w` | Re-open setup wizard |
 
 ---
 
@@ -265,30 +274,19 @@ publish automatically, with no manual steps.
 - **Force Republish Selected** — re-publishes the current merged outputs without waiting for new tasks
 
 **Daily schedule:**
-- Set a time in `HH:MM` format, enable the checkbox, and click **Save Schedule**
-- This writes a crontab entry that runs `monitor.py --all` at the given time every day
-- The schedule runs independently of the TUI — you do not need the app open
+- Set a time in `HH:MM` format and click **Save & Push Schedule**
+- This updates the GitHub Actions workflow file and pushes to GitHub automatically
+- The schedule runs on GitHub's servers in the `Europe/Bucharest` timezone — your machine can be off
 
-**Syncing watchers with GitHub Actions:**
-The Monitor tab has a **Push to GitHub** button. After adding or updating a watcher,
-click it to commit and push `.evalflow_manifest.json` directly from the TUI — no
-terminal needed. GitHub Actions reads this file on every scheduled run, so pushing
-keeps the cloud schedule in sync with your local watcher configuration.
-
-You can also do this manually:
-```bash
-git add .evalflow_manifest.json
-git commit -m "update: monitor manifest"
-git push
-```
+**Syncing watchers to GitHub:**
+Watcher configuration is stored as the `EVALFLOW_MANIFEST` GitHub Actions secret (not in the repo).
+After every monitor run the secret is updated automatically — no manual syncing needed.
+You can also force-sync from the Monitor tab using the **Sync Watchers → Secret** button.
 
 **Headless / no machine required:**
-The GitHub Actions workflow (`.github/workflows/evalflow_ci.yml`) runs the same
-`monitor.py --all` on GitHub's servers every day at 08:00 Bucharest time (06:00 UTC),
-so your datasets update even when your machine is off. See the CI section below.
-
-Both the local cron and GitHub Actions can run simultaneously — the dataset
-append + deduplication logic prevents any duplicate data.
+The GitHub Actions workflow (`.github/workflows/evalflow_ci.yml`) runs `monitor.py --all`
+on GitHub's servers every day at the time you configure, so your datasets update even
+when your machine is off. See the CI section below.
 
 ---
 
@@ -333,17 +331,12 @@ to run it across multiple LLMs — free within your Kaggle quota.
 
 ### Daily schedule (automatic)
 
-Runs every day at **08:00 EET / 09:00 EEST (06:00 UTC)** on GitHub's servers.
-Calls `monitor.py --all`, which reads `.evalflow_manifest.json` from the repo to know
-which benchmarks to check and which dataset to publish to.
+Runs every day at the time configured in the Monitor tab (Europe/Bucharest timezone).
+Calls `monitor.py --all`, which reads the `EVALFLOW_MANIFEST` GitHub Actions secret to
+know which benchmarks to check and which dataset to publish to.
 
-To keep the schedule in sync with your watchers, commit `.evalflow_manifest.json`
-after adding or updating watchers in the Monitor tab:
-```bash
-git add .evalflow_manifest.json
-git commit -m "update monitor manifest"
-git push
-```
+After each run the secret is automatically updated with any newly discovered tasks,
+so the next scheduled run always has the latest state.
 
 ### Manual dispatch
 
@@ -356,11 +349,14 @@ Trigger via **Actions → Run workflow** with these inputs:
 | `dataset_title` | `My Benchmark Results` |
 | `update_existing` | `true` (after first publish) |
 
-Required GitHub Secrets for both modes:
-```
-KAGGLE_USERNAME
-KAGGLE_KEY
-```
+Required GitHub Secrets:
+
+| Secret | Description |
+|--------|-------------|
+| `KAGGLE_USERNAME` | Your Kaggle username |
+| `KAGGLE_KEY` | Your Kaggle legacy API key |
+| `EVALFLOW_MANIFEST` | Watcher config JSON (auto-managed, create once with `{}`) |
+| `GH_PAT` | Fine-grained GitHub PAT with Secrets read/write permission |
 
 ---
 
@@ -388,7 +384,7 @@ evalflow/
 ├── monitor.py               ← Headless watcher runner (used by cron + GitHub Actions)
 ├── config.py                ← .env-based configuration
 ├── requirements.txt
-├── .evalflow_manifest.json  ← Watcher state (committed so GitHub Actions can read it)
+├── .evalflow_manifest.json  ← Watcher state (gitignored — synced via EVALFLOW_MANIFEST secret)
 ├── .github/
 │   └── workflows/
 │       └── evalflow_ci.yml  ← Daily schedule + manual dispatch CI
