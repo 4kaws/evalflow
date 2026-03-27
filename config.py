@@ -25,7 +25,7 @@ class Config:
             data_dir=Path(os.getenv("DATA_DIR", "data")),
             kaggle_username=os.getenv("KAGGLE_USERNAME", ""),
             kaggle_key=os.getenv("KAGGLE_KEY", ""),
-            github_token=os.getenv("GITHUB_TOKEN", ""),
+            github_token=os.getenv("GH_PAT", "") or os.getenv("GITHUB_TOKEN", ""),
             github_repo=os.getenv("GITHUB_REPO", ""),
         )
 
