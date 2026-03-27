@@ -30,7 +30,8 @@ on:
         options: ["true", "false"]
 
   schedule:
-    - cron: "22 7 * * *"  # every day at 09:22 EET
+    - cron: "0 10 * * *"
+      timezone: "Europe/Bucharest"
 
 env:
   PYTHON_VERSION: "3.11"
