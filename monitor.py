@@ -143,15 +143,9 @@ def run_watcher(slug: str, entry: dict, out_dir: Path, force: bool = False) -> N
         pass
 
     import os
-    from config import config
 
-    if config.kaggle_username:
-        os.environ["KAGGLE_USERNAME"] = config.kaggle_username
-    if config.kaggle_key:
-        os.environ["KAGGLE_KEY"] = config.kaggle_key
-
-    username = config.kaggle_username
-    api_key  = config.kaggle_key
+    username = os.getenv("KAGGLE_USERNAME", "")
+    api_key  = os.getenv("KAGGLE_KEY", "")
     if not username or not api_key:
         print("❌ KAGGLE_USERNAME and KAGGLE_KEY must be set in .env", file=sys.stderr)
         return
