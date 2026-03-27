@@ -30,7 +30,7 @@ on:
         options: ["true", "false"]
 
   schedule:
-    - cron: "16 15 * * *"  # every day at 17:16 EET
+    - cron: "22 7 * * *"  # every day at 09:22 EET
 
 env:
   PYTHON_VERSION: "3.11"
