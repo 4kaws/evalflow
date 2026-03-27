@@ -35,38 +35,30 @@ _WORKDIR       = str(Path(__file__).parent.parent)
 _WORKFLOW_FILE = Path(__file__).parent.parent / ".github" / "workflows" / "evalflow_ci.yml"
 
 
-def _utc_to_local(utc_hh: int, utc_mm: int) -> tuple[int, int]:
-    offset_mins = int(datetime.now().astimezone().utcoffset().total_seconds() // 60)
-    total = (utc_hh * 60 + utc_mm + offset_mins) % (24 * 60)
-    return divmod(total, 60)
-
-
-def _local_to_utc(local_hh: int, local_mm: int) -> tuple[int, int]:
-    offset_mins = int(datetime.now().astimezone().utcoffset().total_seconds() // 60)
-    total = (local_hh * 60 + local_mm - offset_mins) % (24 * 60)
-    return divmod(total, 60)
+_WORKFLOW_TZ = "Europe/Bucharest"
 
 
 def _get_schedule() -> tuple[bool, int, int]:
-    """Read schedule from GitHub Actions workflow. Returns (found, local_hh, local_mm)."""
+    """Read schedule from GitHub Actions workflow. Returns (found, hh, mm)."""
     try:
         content = _WORKFLOW_FILE.read_text()
         m = _re.search(r'cron:\s*"(\d+)\s+(\d+)\s+\*\s+\*\s+\*"', content)
         if m:
-            utc_mm, utc_hh = int(m.group(1)), int(m.group(2))
-            return True, *_utc_to_local(utc_hh, utc_mm)
+            mm, hh = int(m.group(1)), int(m.group(2))
+            return True, hh, mm
     except Exception:
         pass
-    return False, 14, 0
+    return False, 9, 22
 
 
 def _set_schedule_in_workflow(hh: int, mm: int) -> None:
     """Update the cron expression in the GitHub Actions workflow file."""
-    utc_hh, utc_mm = _local_to_utc(hh, mm)
-    tz = datetime.now().astimezone().strftime("%Z")
     content = _WORKFLOW_FILE.read_text()
-    new_cron = f'    - cron: "{utc_mm} {utc_hh} * * *"  # every day at {hh:02d}:{mm:02d} {tz}'
-    content = _re.sub(r'[ \t]*- cron: "[^"]*"[^\n]*', new_cron, content)
+    content = _re.sub(
+        r'[ \t]*- cron: "[^"]*"[^\n]*\n([ \t]*timezone:[^\n]*)?\n?',
+        f'    - cron: "{mm} {hh} * * *"\n      timezone: "{_WORKFLOW_TZ}"\n',
+        content,
+    )
     _WORKFLOW_FILE.write_text(content)
 
 
@@ -283,9 +275,7 @@ class MonitorView(Vertical):
 
         try:
             _set_schedule_in_workflow(hh, mm)
-            utc_hh, utc_mm = _local_to_utc(hh, mm)
-            tz = datetime.now().astimezone().strftime("%Z")
-            write(f"\n>> Schedule set to {hh:02d}:{mm:02d} {tz} ({utc_hh:02d}:{utc_mm:02d} UTC) — pushing to GitHub …")
+            write(f"\n>> Schedule set to {hh:02d}:{mm:02d} Europe/Bucharest — pushing to GitHub …")
         except Exception as exc:
             write(f"[x] Could not update workflow file: {exc}")
             return
@@ -299,7 +289,7 @@ class MonitorView(Vertical):
             return
 
         r = subprocess.run(
-            ["git", "-C", _WORKDIR, "commit", "-m", f"chore: set monitor schedule to {hh:02d}:{mm:02d} {tz}"],
+            ["git", "-C", _WORKDIR, "commit", "-m", f"chore: set monitor schedule to {hh:02d}:{mm:02d} EET"],
             capture_output=True, text=True,
         )
         if r.returncode != 0:
