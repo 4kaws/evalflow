@@ -295,8 +295,8 @@ class PullView(Vertical):
                 return
 
             kag_client = KaggleClient(
-                username=config.kaggle_username,
-                api_token=config.kaggle_key,
+                username=config.kaggle_username or None,
+                api_token=config.kaggle_key or None,
             )
             api = KaggleApi()
             api.authenticate()
@@ -391,7 +391,7 @@ class PullView(Vertical):
 
         # ── Strategy 2: kernels_list parent lookup ────────────────────
         try:
-            children = api.kernels_list(parent=benchmark_slug, page_size=100)
+            children = api.kernels_list(parent_kernel=benchmark_slug, page_size=100)
             if children:
                 slugs = [k.ref for k in children if k.ref]
                 if slugs:
