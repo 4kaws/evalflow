@@ -25,6 +25,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dataset-slug",        default=None)
     p.add_argument("--dataset-title",       default=None)
     p.add_argument("--dataset-description", default="")
+    p.add_argument("--max-pairs", type=int, default=8,
+        help="Max DPO preference pairs per question (default: 8)")
     return p.parse_args()
 
 
@@ -32,7 +34,7 @@ def discover_tasks(api, benchmark_slug: str) -> list[str]:
     """Return all task notebook slugs under a benchmark."""
     # Strategy 1: parent/child API
     try:
-        children = api.kernels_list(parent=benchmark_slug, page_size=100)
+        children = api.kernels_list(parent_kernel=benchmark_slug, page_size=100)
         if children:
             slugs = [k.ref for k in children]
             print(f"   Found {len(slugs)} task(s) via parent lookup")
@@ -122,9 +124,13 @@ def main() -> None:
         if not run_files:
             print("⚠  No .run.json files found to merge.")
         else:
-            sft_df, pref_df, stats = merge_outputs(run_files, out_dir)
-            print(f"✅ evalflow_sft.csv          — {len(sft_df)} rows")
-            print(f"✅ evalflow_preferences.csv  — {len(pref_df)} preference pairs")
+            sft_df, pref_df, stats = merge_outputs(
+                run_files, out_dir, max_pairs_per_question=args.max_pairs
+            )
+            print(f"✅ evalflow_sft.csv          — {len(sft_df)} rows (passing only)")
+            print(f"✅ evalflow_preferences.csv  — {len(pref_df)} preference pairs (≤{args.max_pairs}/question)")
+            if stats.get("parquet_written"):
+                print(f"✅ .parquet variants written")
             print(f"   Tasks     : {stats['tasks']}")
             print(f"   Models    : {stats['models']}")
             print(f"   Accuracy  : {stats['accuracy']}%")
@@ -137,6 +143,7 @@ def main() -> None:
 
         import json, os, shutil
         from core.uploader import upload_dataset
+        from views.publish_view import build_dataset_card
 
         username = os.environ.get("KAGGLE_USERNAME", "")
         staging  = out_dir / "staging" / args.dataset_slug
@@ -144,9 +151,28 @@ def main() -> None:
             shutil.rmtree(staging)
         staging.mkdir(parents=True)
 
-        for csv in [out_dir / "evalflow_sft.csv", out_dir / "evalflow_preferences.csv"]:
-            if csv.exists():
-                shutil.copy2(csv, staging / csv.name)
+        sft_path  = out_dir / "evalflow_sft.csv"
+        pref_path = out_dir / "evalflow_preferences.csv"
+        for f in [sft_path, pref_path,
+                   sft_path.with_suffix(".parquet"),
+                   pref_path.with_suffix(".parquet")]:
+            if f.exists():
+                shutil.copy2(f, staging / f.name)
+
+        def _count(p: Path) -> str:
+            try:
+                return str(sum(1 for _ in open(p, "rb")) - 1)
+            except Exception:
+                return "?"
+
+        readme = build_dataset_card(
+            title=args.dataset_title,
+            description=args.dataset_description,
+            sft_rows=_count(sft_path),
+            pref_pairs=_count(pref_path),
+            max_pairs_per_question=args.max_pairs,
+        )
+        (staging / "README.md").write_text(readme, encoding="utf-8")
 
         (staging / "dataset-metadata.json").write_text(json.dumps({
             "title":       args.dataset_title,

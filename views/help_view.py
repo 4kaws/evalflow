@@ -35,13 +35,36 @@ research-ready datasets, and publishes them to Kaggle Datasets.
     + evalflow_preferences.csv  — RLHF / DPO preference pairs
 
   [bold $primary]Publish[/bold $primary]   [dim]key: 5[/dim]
-  Uploads both files to Kaggle Datasets as a public resource.
+  Uploads CSV + Parquet variants and a generated dataset card (README.md)
+  to Kaggle Datasets as a public resource.
+
+  [bold $primary]Monitor[/bold $primary]   [dim]key: 6[/dim]
+  Watches benchmarks for new task notebooks and runs the full pipeline
+  (pull → merge → publish) automatically on a daily GitHub Actions schedule.
+
+  Setting up a watcher:
+    1. Enter a benchmark slug (username/benchmark-name)
+    2. Enter dataset slug + title (where results will be published)
+    3. Click Save Watcher — the row appears in the table
+    4. Enter a time (HH:MM, Europe/Bucharest) and click Save & Push
+       This commits the cron schedule to .github/workflows/evalflow_ci.yml
+       and pushes to GitHub so Actions picks it up.
+
+  Button guide:
+    Check All Now      — run all watchers immediately (pulls + merges + publishes)
+    Check Selected     — same, for the highlighted row only
+    Force Republish    — re-upload the current outputs/ files without re-pulling
+    New Watcher        — clear the form to add a second watcher
+    Remove Selected    — delete the highlighted watcher from the manifest
+    Reset & Re-pull    — wipe known tasks so the next check re-downloads everything
+    Sync → Secret      — encrypt the manifest and push it to the EVALFLOW_MANIFEST
+                         GitHub Actions secret (requires PyNaCl + a PAT with secrets scope)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [bold]KEYBOARD NAVIGATION[/bold]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  [bold]1–5[/bold]       Switch tabs
+  [bold]1–6[/bold]       Switch tabs
   [bold]?[/bold]         Open / close this help panel
   [bold]q[/bold]         Quit
   [bold]Esc[/bold]       Unfocus current field
@@ -63,29 +86,31 @@ research-ready datasets, and publishes them to Kaggle Datasets.
 
   Merge:    Ctrl+M  run merge     Ctrl+A  select all     Ctrl+R  refresh
   Publish:  Ctrl+U  publish new   Ctrl+E  update existing
+  Monitor:  Ctrl+R  check all watchers now
   Results / Leaderboard:  Ctrl+R  refresh
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [bold]OUTPUT FORMATS[/bold]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  [bold]evalflow_sft.csv[/bold] — one row per model response
-    task_name, category, difficulty
-    model_name, model_version
+  [bold]evalflow_sft.csv / .parquet[/bold] — one row per passing model response
+    (.parquet requires: pip install pyarrow)
+    task_name, task_description, task_definition
+    model_name
     question, ground_truth, prompt_template
-    messages          ← chat-format JSON, SFT-ready
     llm_response
-    answer_correct    ← 0/1
-    reasoning_correct ← 0/1
+    messages          ← chat-format JSON, SFT-ready
     score             ← overall pass/fail (0/1)
-    reasoning         ← judge explanation on failure
-    judge_model, timestamp
+    reasoning         ← failed assertion text
+    assertions_json   ← all assertions with pass/fail status
+    judge_model, input_tokens, output_tokens, timestamp
 
-  [bold]evalflow_preferences.csv[/bold] — one row per question with paired responses
-    question, ground_truth, prompt_template
-    chosen_response, chosen_model    ← best passing answer
-    rejected_response, rejected_model ← worst failing answer
-    (only questions where ≥1 model passed AND ≥1 failed)
+  [bold]evalflow_preferences.csv / .parquet[/bold] — sampled passing × failing pairs (capped per question)
+    task_name, prompt, ground_truth
+    chosen, chosen_model    ← a passing answer
+    rejected, rejected_model ← a failing answer
+    (column names match HuggingFace TRL DPOTrainer directly;
+     Parquet variant preserves types — no json.loads() needed)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [bold]TYPICAL WORKFLOW[/bold]
@@ -129,16 +154,16 @@ class HelpView(Vertical):
     HelpView {
         layer: overlay;
         align: center middle;
-        background: $background 80%;
+        background: $background 85%;
         width: 100%;
         height: 100%;
     }
 
     #help-box {
-        width: 72;
+        width: 74;
         height: 90%;
         background: $surface;
-        border: round $primary;
+        border: tall $panel;
         padding: 0;
     }
 
@@ -151,7 +176,7 @@ class HelpView(Vertical):
         height: 3;
         align: right middle;
         padding: 0 2;
-        border-top: solid $primary 20%;
+        border-top: tall $panel;
     }
     #help-close-btn { width: 14; }
     """

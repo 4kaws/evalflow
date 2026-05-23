@@ -10,7 +10,7 @@ from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, ScrollableContainer
-from textual.widgets import Button, DataTable, Label, Select, Static, Sparkline
+from textual.widgets import Button, DataTable, Label, Select, Static
 
 from config import config
 from core.merger import discover_outputs
@@ -22,12 +22,12 @@ class LeaderboardView(Vertical):
     ]
 
     DEFAULT_CSS = """
-    LeaderboardView { padding: 0 1; height: 1fr; }
+    LeaderboardView { padding: 1 2; height: 1fr; }
 
     .section-title {
-        color: $primary;
+        color: $text-muted;
         text-style: bold;
-        margin-top: 0;
+        margin-top: 1;
         margin-bottom: 0;
     }
 
@@ -37,33 +37,31 @@ class LeaderboardView(Vertical):
         align: left middle;
         margin-bottom: 0;
     }
-    #top-bar Label { width: 14; color: $text-muted; }
-    #top-bar Select { width: 32; margin-right: 2; }
+    #top-bar Label { width: 12; color: $text-muted; }
+    #top-bar Select { width: 30; margin-right: 2; }
 
     #leaderboard-table {
         height: 1fr;
         min-height: 4;
-        border: solid $primary 15%;
         background: $surface;
+        margin-top: 1;
     }
 
     #split-layout {
         layout: horizontal;
         height: 1fr;
         min-height: 4;
-        margin-top: 0;
+        margin-top: 1;
     }
 
     #task-breakdown {
         width: 1fr;
-        border: solid $primary 15%;
         background: $surface;
         margin-right: 1;
     }
 
     #question-diff {
         width: 1fr;
-        border: solid $primary 15%;
         background: $surface;
     }
 
@@ -111,7 +109,8 @@ class LeaderboardView(Vertical):
         tt.add_columns("Task", "Model", "Accuracy %", "Pass", "Total")
 
     def on_activate(self) -> None:
-        pass  # user must click Refresh to load
+        if self._df.empty:
+            self._load_all_outputs()
 
     # ------------------------------------------------------------------ #
     #  Data loading                                                        #
@@ -187,6 +186,15 @@ class LeaderboardView(Vertical):
                 bar,
             ))
         lb.add_rows(lb_rows)
+
+        # Auto-select top model and show its diff immediately
+        if lb_rows:
+            lb.move_cursor(row=0)
+            top_short = lb_rows[0][1]
+            models_full = self._df["model_name"].unique().tolist()
+            full_name = next((m for m in models_full if m.split("/")[-1] == top_short), None)
+            if full_name:
+                self._show_question_diff(full_name)
 
         # Per-task breakdown
         task_agg = (

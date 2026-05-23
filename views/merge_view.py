@@ -46,7 +46,7 @@ class MergeView(Vertical):
     def action_nav_up(self) -> None:
         if self._fid() in self._BTN_IDS:
             self._reset_btns()
-            self.query_one("#dedup-switch", Checkbox).focus()
+            self.query_one("#passing-only-switch", Checkbox).focus()
         else:
             self.app.action_focus_previous()
 
@@ -68,36 +68,34 @@ class MergeView(Vertical):
         self.app.action_unfocus()
 
     DEFAULT_CSS = """
-    MergeView { padding: 0 1; height: 1fr; }
-    .section-title { color: $primary; text-style: bold; margin-bottom: 0; margin-top: 0; }
+    MergeView { padding: 1 2; height: 1fr; }
+    .section-title { color: $text-muted; text-style: bold; margin-bottom: 0; margin-top: 1; }
 
     #file-list {
         height: 1fr;
         min-height: 4;
-        border: solid $primary 15%;
         background: $surface;
         padding: 0 1;
         margin-bottom: 0;
         overflow-y: auto;
     }
 
-#btn-row { layout: horizontal; height: 3; margin-bottom: 0; }
+    #btn-row { layout: horizontal; height: 3; margin-top: 1; margin-bottom: 0; }
     #btn-row Button { margin-right: 1; }
 
     #merge-log {
         height: 1fr;
         min-height: 4;
-        border: solid $primary 15%;
         background: $surface;
-        margin-top: 0;
+        margin-top: 1;
+        padding: 0 1;
     }
 
     #stats-panel {
         height: auto;
-        border: solid $primary 15%;
         background: $surface;
-        padding: 1;
-        margin-top: 0;
+        padding: 1 2;
+        margin-top: 1;
         color: $text-muted;
     }
     """
@@ -111,8 +109,8 @@ class MergeView(Vertical):
         yield Static("Merge Benchmark Outputs", classes="section-title")
         yield Static(
             "Select pulled .run.json files to merge. Two files will be produced:\n"
-            "  + evalflow_sft.csv           — SFT / fine-tuning format\n"
-            "  + evalflow_preferences.csv   — Preference pairs for RLHF / DPO",
+            "  + evalflow_sft.csv / .parquet           — SFT / fine-tuning format (passing responses)\n"
+            "  + evalflow_preferences.csv / .parquet   — DPO preference pairs (prompt/chosen/rejected)",
             id="format-note",
         )
 
@@ -120,6 +118,11 @@ class MergeView(Vertical):
         yield ScrollableContainer(id="file-list")
 
         yield Checkbox("Remove duplicate rows", value=True, id="dedup-switch")
+        yield Checkbox(
+            "SFT: include passing responses only  (recommended for fine-tuning)",
+            value=True,
+            id="passing-only-switch",
+        )
 
         with Horizontal(id="btn-row"):
             yield Button("Merge Selected", id="merge-btn", variant="primary")
@@ -134,6 +137,7 @@ class MergeView(Vertical):
         pass  # start empty — user clicks Refresh after pulling
 
     def on_activate(self) -> None:
+        self._refresh_file_list()
         self.query_one("#merge-btn", Button).focus()
 
     # ------------------------------------------------------------------ #
@@ -199,7 +203,8 @@ class MergeView(Vertical):
             log.write_line("[x] No files selected.")
             return
 
-        dedup = self.query_one("#dedup-switch", Checkbox).value
+        dedup        = self.query_one("#dedup-switch",        Checkbox).value
+        passing_only = self.query_one("#passing-only-switch", Checkbox).value
         log.write_line(f"Merging {len(selected)} file(s) into outputs/\n")
 
         try:
@@ -207,10 +212,16 @@ class MergeView(Vertical):
                 json_paths=selected,
                 output_dir=config.output_dir,
                 deduplicate=dedup,
+                passing_only=passing_only,
             )
 
-            log.write_line(f"[ok] evalflow_sft.csv         — {len(sft_df)} rows")
+            sft_note = " (passing only)" if passing_only else " (all responses)"
+            log.write_line(f"[ok] evalflow_sft.csv         — {len(sft_df)} rows{sft_note}")
             log.write_line(f"[ok] evalflow_preferences.csv — {len(pref_df)} preference pairs")
+            if stats.get("parquet_written"):
+                log.write_line("[ok] .parquet variants written  (type-safe, HuggingFace-ready)")
+            else:
+                log.write_line("[i]  Parquet skipped — run: pip install pyarrow  to enable")
 
             if stats["files_skipped"]:
                 log.write_line(f"[!]  {stats['files_skipped']} file(s) skipped:")

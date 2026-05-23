@@ -85,48 +85,64 @@ from views.results_view import ResultsView
 
 EVALFLOW_THEME = Theme(
     name="evalflow",
-    primary="#58a6ff",      # light blue
-    secondary="#79c0ff",    # lighter blue
-    warning="#d29922",      # amber
-    error="#f85149",        # soft red
-    success="#3fb950",      # green
-    accent="#1f6feb",       # deep blue accent
-    foreground="#e6edf3",   # near-white text
-    background="#0d1117",   # near-black
-    surface="#161b22",      # dark surface
-    panel="#21262d",        # panel bg
-    boost="#30363d",        # hover highlight
+    primary="#4d9de0",      # calm blue
+    secondary="#7eb8e6",
+    warning="#c9954c",
+    error="#e05252",
+    success="#3d9c60",
+    accent="#2274b5",
+    foreground="#c9d1d9",   # softer white
+    background="#0d1117",
+    surface="#161b22",
+    panel="#1c2128",
+    boost="#2d333b",
     dark=True,
 )
 
+# 4-row pixel-art goose, all blue.
+# Each terminal row = 2 "pixel rows" via Unicode half-block chars (▄ ▀ █ ▌).
+# Pixel grid (8 rows × 5 cols, goose facing right):
+#   . . # # .    row 1+2  → head:       ▄██
+#   . # # # .    row 3+4  → neck/upper: ▄███
+#   # # # # #    row 5+6  → body:       ████▀
+#   . # . # .    row 7+8  → legs:        ▌ ▌
+GOOSE = (
+    " [#4d9de0]▄██[/#4d9de0]\n"
+    "[#4d9de0]▄███[/#4d9de0]\n"
+    "[#4d9de0]████▀[/#4d9de0]\n"
+    " [#4d9de0]▌ ▌[/#4d9de0]"
+)
+
 NAV_ITEMS = [
-    ("pull",        "Pull",        "1"),
-    ("results",     "Results",     "2"),
-    ("leaderboard", "Leaderboard", "3"),
-    ("merge",       "Merge",       "4"),
-    ("publish",     "Publish",     "5"),
-    ("monitor",     "Monitor",     "6"),
+    ("pull",        "Pull",    "1"),
+    ("results",     "Results", "2"),
+    ("leaderboard", "Board",   "3"),
+    ("merge",       "Merge",   "4"),
+    ("publish",     "Publish", "5"),
+    ("monitor",     "Monitor", "6"),
 ]
 
 
 class NavItem(Static):
     DEFAULT_CSS = """
     NavItem {
+        width: auto;
         padding: 0 2;
-        color: $text-muted;
         height: 3;
-        content-align: left middle;
+        color: $text-muted;
+        content-align: center middle;
+        border-bottom: heavy $surface;
     }
-    NavItem:hover { background: $boost; color: $text; }
+    NavItem:hover { color: $foreground; background: $boost; }
     NavItem.active {
         color: $primary;
-        background: $primary 8%;
-        border-left: outer $primary;
+        text-style: bold;
+        border-bottom: heavy $primary;
     }
     """
 
     def __init__(self, view_id: str, label: str, key: str):
-        super().__init__(f"[dim]{key}[/dim]  {label}")
+        super().__init__(f"[dim]{key}[/dim] {label}")
         self.view_id = view_id
 
     def on_click(self) -> None:
@@ -142,28 +158,64 @@ class EvalflowApp(App):
     CSS = """
     Screen { layout: vertical; }
 
-    #app-header {
-        height: 3;
+    #header-bar {
+        height: 5;
         background: $surface;
-        border: solid $primary 15%;
-        content-align: center middle;
-        color: $foreground;
-        text-align: center;
+        border-bottom: tall $panel;
+        padding: 0 2;
     }
 
-    #sidebar {
-        width: 16;
-        background: $background;
-        border-right: solid $panel;
-        padding-top: 1;
+    #logo {
+        width: auto;
+        height: 4;
+        padding: 0 2 0 0;
+        content-align: left top;
     }
-    #sidebar-hint {
-        padding: 1 2 0 2;
+
+    #header-spacer { width: 1fr; height: 5; }
+
+    #app-version {
+        width: auto;
+        padding: 0 0 0 2;
+        height: 5;
+        content-align: right middle;
         color: $text-muted;
     }
-    #main-layout { layout: horizontal; height: 1fr; }
-    #content { width: 1fr; height: 1fr; background: $background; }
+
+    #content { height: 1fr; background: $background; }
     ContentSwitcher { height: 1fr; }
+
+    Button {
+        border: tall $panel;
+        background: $surface;
+        color: $text-muted;
+    }
+    Button:hover {
+        background: $boost;
+        border: tall $boost;
+        color: $foreground;
+    }
+    Button:focus {
+        border: tall $primary 60%;
+        color: $foreground;
+    }
+    Button.-primary {
+        background: $primary 15%;
+        color: $primary;
+        border: tall $panel;
+    }
+    Button.-primary:hover {
+        background: $primary 25%;
+        border: tall $primary 40%;
+        color: $primary;
+    }
+    Button.-primary:focus {
+        border: tall $primary 80%;
+    }
+    Button.-active {
+        background: $boost;
+        tint: $background 20%;
+    }
 
     HelpView {
         layer: overlay;
@@ -200,32 +252,24 @@ class EvalflowApp(App):
             shutil.rmtree(config.output_dir, ignore_errors=True)
 
     def compose(self) -> ComposeResult:
-        yield Static(
-            "[bold $primary]E  V  A  L  F  L  O  W[/bold $primary]"
-            "   [dim]kaggle benchmark puller & dataset publisher[/dim]",
-            id="app-header",
-            markup=True,
-        )
-        with Horizontal(id="main-layout"):
-            with Vertical(id="sidebar"):
-                for view_id, label, key in NAV_ITEMS:
-                    item = NavItem(view_id, label, key)
-                    if view_id == "pull":
-                        item.add_class("active")
-                    yield item
-                yield Static(
-                    "[dim]─────────────────\n?  Help\nw  Setup\nq  Quit\nEsc  Unfocus[/dim]",
-                    id="sidebar-hint",
-                )
-            with ContentSwitcher(id="content", initial="pull"):
-                yield PullView(id="pull")
-                yield ResultsView(id="results")
-                yield LeaderboardView(id="leaderboard")
-                yield MergeView(id="merge")
-                yield PublishView(id="publish")
-                yield MonitorView(id="monitor")
+        with Horizontal(id="header-bar"):
+            yield Static(GOOSE, id="logo")
+            for view_id, label, key in NAV_ITEMS:
+                item = NavItem(view_id, label, key)
+                if view_id == "pull":
+                    item.add_class("active")
+                yield item
+            yield Static("", id="header-spacer")
+            yield Static(f"v{__version__}", id="app-version")
+        with ContentSwitcher(id="content", initial="pull"):
+            yield PullView(id="pull")
+            yield ResultsView(id="results")
+            yield LeaderboardView(id="leaderboard")
+            yield MergeView(id="merge")
+            yield PublishView(id="publish")
+            yield MonitorView(id="monitor")
         yield Footer()
-        yield HelpView(id="help-overlay")   # rendered on overlay layer
+        yield HelpView(id="help-overlay")
 
     def switch_view(self, view_id: str) -> None:
         self.query_one(ContentSwitcher).current = view_id

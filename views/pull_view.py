@@ -92,12 +92,12 @@ class PullView(Vertical):
             self.app.action_unfocus()
 
     DEFAULT_CSS = """
-    PullView { padding: 0 1; height: 1fr; }
+    PullView { padding: 1 2; height: 1fr; }
 
     .section-title {
-        color: $primary;
+        color: $text-muted;
         text-style: bold;
-        margin-top: 0;
+        margin-top: 1;
         margin-bottom: 0;
     }
     .field-row {
@@ -107,7 +107,7 @@ class PullView(Vertical):
         margin-bottom: 0;
     }
     .field-label {
-        width: 24;
+        width: 20;
         height: 3;
         color: $text-muted;
         content-align: right middle;
@@ -120,36 +120,34 @@ class PullView(Vertical):
         content-align: left middle;
         padding-left: 1;
     }
-    .field-input { width: 48; }
+    .field-input { width: 52; }
 
-    #btn-row { layout: horizontal; height: 3; margin-top: 0; }
+    #btn-row { layout: horizontal; height: 3; margin-top: 1; }
     #btn-row Button { margin-right: 1; }
 
     #pull-log {
         height: 1fr;
         min-height: 4;
-        border: solid $primary 15%;
         background: $surface;
-        margin-top: 0;
+        margin-top: 1;
+        padding: 0 1;
     }
 
     #pulled-table {
         height: 1fr;
         min-height: 4;
-        border: solid $primary 15%;
         background: $surface;
-        margin-top: 0;
+        margin-top: 1;
     }
 
     #status-bar {
         color: $text-muted;
-        height: 2;
+        height: 1;
         margin-top: 0;
         padding: 0 1;
-        background: $surface;
     }
 
-    #creds-note { color: $warning; margin-bottom: 0; }
+    #creds-note { color: $text-muted; margin-bottom: 0; }
     """
 
     def __init__(self, **kwargs):
@@ -277,7 +275,6 @@ class PullView(Vertical):
         try:
             import os
             from kagglesdk import KaggleClient
-            from kaggle.api.kaggle_api_extended import KaggleApi
             from config import config
 
             if config.kaggle_username and config.kaggle_key:
@@ -294,12 +291,10 @@ class PullView(Vertical):
                 )
                 return
 
-            kag_client = KaggleClient(
-                username=config.kaggle_username or None,
-                api_token=config.kaggle_key or None,
-            )
-            api = KaggleApi()
-            api.authenticate()
+            # Do NOT pass username/api_token — that enables Bearer auth which
+            # the Benchmark Tasks API rejects. KaggleClient() reads credentials
+            # from env vars / ~/.kaggle/kaggle.json and uses basic auth instead.
+            kag_client = KaggleClient()
             log.write_line("[ok] Authenticated with Kaggle API\n")
         except ImportError:
             log.write_line("[x] kaggle / kagglesdk package not installed.")
@@ -311,32 +306,50 @@ class PullView(Vertical):
             )
             return
 
-        # Discover task notebooks
-        task_slugs = self._discover_tasks(api, slug, log, kag_client=kag_client)
+        # Discover tasks via the leaderboard API
+        task_slugs = self._discover_tasks(kag_client, slug, log)
         if not task_slugs:
             return
 
         if not download:
             return
 
-        # Pull each task
+        # Pull each task — one .run.json per model per task
         out_dir.mkdir(parents=True, exist_ok=True)
-        all_downloaded: list[tuple[str, Path]] = []
-        failed_tasks:   list[str]              = []
+        all_downloaded:  list[tuple[str, Path]] = []
+        denied_tasks:    list[str]              = []   # 403/404 — no access
+        no_output_tasks: list[str]              = []   # no completed runs yet
 
+        import time as _time
         for i, task_slug in enumerate(task_slugs, 1):
+            if i > 1:
+                _time.sleep(0.5)   # avoid 429 rate limit between tasks
             log.write_line(f"\n[{i}/{len(task_slugs)}] Pulling: {task_slug}")
-            run_files = self._pull_one_task(api, kag_client, config.kaggle_username, config.kaggle_key, task_slug, out_dir, log)
+            run_files = self._pull_one_task(kag_client, task_slug, out_dir, log)
             if run_files:
                 all_downloaded.extend((task_slug, p) for p in run_files)
+            elif run_files is None:
+                denied_tasks.append(task_slug)
             else:
-                failed_tasks.append(task_slug)
+                no_output_tasks.append(task_slug)
 
         # Summary
         log.write_line(f"\n{'─'*50}")
-        log.write_line(f"[ok] Pulled {len(all_downloaded)} run file(s) from {len(task_slugs)} task(s)")
-        if failed_tasks:
-            log.write_line(f"[!]  {len(failed_tasks)} task(s) had no .run.json output: {', '.join(failed_tasks)}")
+        log.write_line(
+            f"[ok] Pulled {len(all_downloaded)} .run.json file(s) from {len(task_slugs)} task(s)"
+            f"  ({len(all_downloaded)} = tasks × models with completed runs)"
+        )
+        if denied_tasks:
+            log.write_line(
+                f"[!]  {len(denied_tasks)} task(s) not accessible: "
+                + ", ".join(denied_tasks)
+            )
+        if no_output_tasks:
+            log.write_line(
+                f"[!]  {len(no_output_tasks)} task(s) returned no files "
+                "(no completed runs, or rate-limited after retries — check log above): "
+                + ", ".join(no_output_tasks)
+            )
 
         def _finish() -> None:
             self._populate_table(all_downloaded, log)
@@ -345,6 +358,15 @@ class PullView(Vertical):
                 f"  {len(all_downloaded)} run file(s) saved to {out_dir}"
                 "  |  Switch to Merge to combine them."
             )
+            # Refresh dependent views so they're ready without a manual Refresh
+            if all_downloaded:
+                from views.results_view import ResultsView
+                from views.leaderboard_view import LeaderboardView
+                try:
+                    self.app.query_one("#results", ResultsView).action_refresh()
+                    self.app.query_one("#leaderboard", LeaderboardView).action_refresh()
+                except Exception:
+                    pass
             if auto_merge and all_downloaded:
                 self.app.switch_view("merge")  # type: ignore
 
@@ -354,121 +376,150 @@ class PullView(Vertical):
     #  Task discovery                                                      #
     # ------------------------------------------------------------------ #
 
-    def _discover_tasks(self, api, benchmark_slug: str, log: Log, kag_client=None) -> list[str]:
+    def _discover_tasks(self, kag_client, benchmark_slug: str, log: Log) -> list[str]:
         """
-        Find all task notebooks belonging to a benchmark.
+        Find all tasks belonging to a benchmark via the leaderboard API.
 
-        Expects "username/benchmark-name". Tries three strategies:
-          1. get_benchmark_leaderboard — extracts task slugs from the leaderboard API
-          2. kernels_list(parent=) — official parent/child API
-          3. Treat benchmark_slug itself as a single-task notebook
+        Expects "username/benchmark-name". Returns benchmark task slugs in
+        "username/task-slug" form, suitable for the Benchmark Tasks API.
         """
         username, slug_name = benchmark_slug.split("/", 1)
         log.write_line(f">> Discovering tasks in: {benchmark_slug}\n")
 
-        # ── Strategy 1: leaderboard API → task slugs ──────────────────
-        if kag_client is not None:
-            try:
-                from kagglesdk.benchmarks.types.benchmarks_api_service import ApiGetBenchmarkLeaderboardRequest
-                req = ApiGetBenchmarkLeaderboardRequest()
-                req.owner_slug     = username
-                req.benchmark_slug = slug_name
-                lb = kag_client.benchmarks.benchmarks_api_client.get_benchmark_leaderboard(req)
-                task_slugs: set[str] = set()
-                for row in (lb.rows or []):
-                    for tr in (row.task_results or []):
-                        if tr.benchmark_task_slug:
-                            short = tr.benchmark_task_slug.rstrip('/').split('/')[-1]
-                            task_slugs.add(short)
-                if task_slugs:
-                    slugs = [f"{username}/{s}" for s in sorted(task_slugs)]
-                    log.write_line(f"   Found {len(slugs)} task(s) via leaderboard API:\n")
-                    for s in slugs:
-                        log.write_line(f"   - {s}")
-                    return slugs
-            except Exception as exc:
-                log.write_line(f"   (leaderboard API failed: {exc})")
-
-        # ── Strategy 2: kernels_list parent lookup ────────────────────
         try:
-            children = api.kernels_list(parent_kernel=benchmark_slug, page_size=100)
-            if children:
-                slugs = [k.ref for k in children if k.ref]
-                if slugs:
-                    log.write_line(f"   Found {len(slugs)} task(s) via parent lookup:\n")
-                    for s in slugs:
-                        log.write_line(f"   - {s}")
-                    return slugs
+            from kagglesdk.benchmarks.types.benchmarks_api_service import ApiGetBenchmarkLeaderboardRequest
+            req = ApiGetBenchmarkLeaderboardRequest()
+            req.owner_slug     = username
+            req.benchmark_slug = slug_name
+            lb = kag_client.benchmarks.benchmarks_api_client.get_benchmark_leaderboard(req)
+            task_slugs: set[str] = set()
+            for row in (lb.rows or []):
+                for tr in (row.task_results or []):
+                    if tr.benchmark_task_slug:
+                        short = tr.benchmark_task_slug.rstrip("/").split("/")[-1]
+                        task_slugs.add(short)
+            if task_slugs:
+                slugs = [f"{username}/{s}" for s in sorted(task_slugs)]
+                log.write_line(f"   Found {len(slugs)} task(s) via leaderboard API:\n")
+                for s in slugs:
+                    log.write_line(f"   - {s}")
+                return slugs
         except Exception as exc:
-            log.write_line(f"   (parent lookup failed: {exc})")
+            log.write_line(f"   (leaderboard API failed: {exc})")
 
-        # ── Strategy 3: treat as single-task notebook ─────────────────
         log.write_line(
-            f"\n   Could not find notebooks automatically.\n"
-            f"   Treating '{benchmark_slug}' as a single notebook.\n"
+            f"\n[x] Could not discover tasks for '{benchmark_slug}'.\n"
+            "   The benchmark may not have a leaderboard yet, or the slug is wrong.\n"
+            "   Format: username/benchmark-name  (from kaggle.com/benchmarks/username/benchmark-name)"
         )
-        return [benchmark_slug]
+        return []
 
     # ------------------------------------------------------------------ #
     #  Single-task pull                                                    #
     # ------------------------------------------------------------------ #
 
+    @staticmethod
+    def _api_call_with_retry(call, log: Log, label: str):
+        """Call a zero-arg callable, retrying on 429 with exponential backoff."""
+        import time
+        delays = [2, 5, 15]
+        for attempt, delay in enumerate(delays + [None]):
+            try:
+                return call()
+            except Exception as exc:
+                if "429" not in str(exc) or delay is None:
+                    raise
+                log.write_line(f"   (rate limited on {label}, retrying in {delay}s…)")
+                time.sleep(delay)
+
     def _pull_one_task(
         self,
-        api,
         kag_client,
-        username: str,
-        api_key: str,
         task_slug: str,
         out_dir: Path,
         log: Log,
-    ) -> list[Path]:
-        """List and download .run.json outputs from a benchmark task kernel."""
-        import requests
-        from kagglesdk.kernels.types.kernels_api_service import ApiListKernelSessionOutputRequest
+    ) -> list[Path] | None:
+        """Download .run.json outputs for a benchmark task via the Benchmark Tasks API.
 
-        owner, kernel_slug = task_slug.split("/", 1)
+        Returns:
+            list[Path]  — downloaded files (empty if no completed runs yet)
+            None        — 403/404: task not accessible
+        """
+        import io
+        import zipfile
 
-        all_run_files = []
-        page_token    = None
+        from kagglesdk.benchmarks.types.benchmark_tasks_api_service import (
+            ApiBenchmarkTaskSlug,
+            ApiDownloadBenchmarkTaskRunOutputRequest,
+            ApiListBenchmarkTaskRunsRequest,
+            BenchmarkTaskRunState,
+        )
+
+        owner, slug_name = task_slug.split("/", 1)
+        client = kag_client.benchmarks.benchmark_tasks_api_client
+
+        # Collect all completed run IDs (paginated)
+        completed_run_ids: list[int] = []
+        page_token = ""
         try:
             while True:
-                req = ApiListKernelSessionOutputRequest()
-                req.user_name   = owner
-                req.kernel_slug = kernel_slug
-                req.page_size   = 100
+                req = ApiListBenchmarkTaskRunsRequest()
+                slug_obj = ApiBenchmarkTaskSlug()
+                slug_obj.owner_slug = owner
+                slug_obj.task_slug  = slug_name
+                req.task_slug  = slug_obj
+                req.page_size  = 100
                 if page_token:
                     req.page_token = page_token
-                response = kag_client.kernels.kernels_api_client.list_kernel_session_output(req)
-                all_run_files += [f for f in (response.files or []) if f.file_name.endswith(".run.json")]
-                page_token = response.next_page_token or ""
+                resp = self._api_call_with_retry(
+                    lambda r=req: client.list_benchmark_task_runs(r),
+                    log, "list runs",
+                )
+                for run in resp.runs or []:
+                    if run.state == BenchmarkTaskRunState.BENCHMARK_TASK_RUN_STATE_COMPLETED:
+                        completed_run_ids.append(run.id)
+                page_token = resp.next_page_token or ""
                 if not page_token:
                     break
         except Exception as exc:
             exc_str = str(exc)
-            if "403" in exc_str:
-                log.write_line(f"   ⏳ {task_slug}: no accessible runs yet (403) — skipping.")
-            else:
-                log.write_line(f"   [x] Failed to list outputs for {task_slug}: {exc_str}")
+            if "403" in exc_str or "404" in exc_str:
+                log.write_line(f"   [x] {task_slug}: no access ({exc_str[:80]})")
+                return None
+            log.write_line(f"   [x] Failed to list runs for {task_slug}: {exc_str}")
             return []
 
-        if not all_run_files:
-            log.write_line(f"   [!] No .run.json output found for {task_slug}")
+        if not completed_run_ids:
+            log.write_line(f"   [!] No completed runs found for {task_slug}")
             return []
 
-        log.write_line(f"   Found {len(all_run_files)} .run.json file(s)")
+        log.write_line(f"   Found {len(completed_run_ids)} completed run(s)")
 
-        saved = []
-        for file_info in all_run_files:
-            dest = out_dir / file_info.file_name
+        saved: list[Path] = []
+        for run_id in completed_run_ids:
             try:
-                r = requests.get(file_info.url, auth=(username, api_key), timeout=60)
-                r.raise_for_status()
-                dest.write_bytes(r.content)
-                saved.append(dest)
-                log.write_line(f"   + {file_info.file_name}")
+                dl_req = ApiDownloadBenchmarkTaskRunOutputRequest()
+                dl_req.run_id = run_id
+                r = self._api_call_with_retry(
+                    lambda req=dl_req: client.download_benchmark_task_run_output(req),
+                    log, f"download run {run_id}",
+                )
+                if not r.ok:
+                    log.write_line(f"   [!] Run {run_id}: HTTP {r.status_code}")
+                    continue
+                zf = zipfile.ZipFile(io.BytesIO(r.content))
+                for name in zf.namelist():
+                    if not name.endswith(".run.json"):
+                        continue
+                    dest = out_dir / name
+                    if dest.exists():
+                        saved.append(dest)
+                        continue
+                    dest.write_bytes(zf.read(name))
+                    saved.append(dest)
+                    log.write_line(f"   + {name}")
             except Exception as exc:
-                log.write_line(f"   [!] Failed to download {file_info.file_name}: {exc}")
+                log.write_line(f"   [!] Failed to download run {run_id}: {exc}")
 
         return saved
 

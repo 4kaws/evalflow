@@ -17,6 +17,14 @@ from config import config
 MANIFEST_FILE = Path(".evalflow_manifest.json")
 
 
+def _row_count(path: Path) -> str:
+    try:
+        with open(path, "rb") as f:
+            return str(sum(1 for _ in f) - 1)
+    except Exception:
+        return "?"
+
+
 def _load_manifest() -> dict:
     try:
         return json.loads(MANIFEST_FILE.read_text())
@@ -76,13 +84,73 @@ def _next_run_text(enabled: bool, hh: int, mm: int) -> str:
     return f"Next run: {next_run.strftime('%Y-%m-%d %H:%M')}  (in {hours}h {mins}m)"
 
 
+def _resolve_to_kernel_refs(api, owner: str, task_slugs: list[str], log_fn) -> list[str]:
+    """
+    Map benchmark-internal task slugs to real Kaggle kernel refs via token matching.
+    See pull_view._resolve_to_kernel_refs for the full explanation.
+    """
+    def write(msg):
+        if log_fn:
+            log_fn(msg)
+    try:
+        all_kernels: list = []
+        for page in range(1, 6):
+            page_results = api.kernels_list(user=owner, page=page, page_size=100) or []
+            all_kernels.extend(page_results)
+            if len(page_results) < 100:
+                break
+        kernel_slug_map = {k.ref.split("/")[-1]: k.ref for k in all_kernels if k.ref}
+    except Exception as exc:
+        write(f"   (kernel list lookup failed — using leaderboard slugs: {exc})")
+        return task_slugs
+
+    resolved: list[str] = []
+    seen: set[str] = set()
+
+    for full_slug in task_slugs:
+        lb_slug = full_slug.split("/")[-1]
+
+        if lb_slug in kernel_slug_map:
+            ref = kernel_slug_map[lb_slug]
+            if ref not in seen:
+                resolved.append(ref)
+                seen.add(ref)
+            continue
+
+        lb_tokens = set(lb_slug.split("-"))
+        best_ref, best_score, best_len = None, -1, 0
+        for k_slug, k_ref in kernel_slug_map.items():
+            k_tokens = set(k_slug.split("-"))
+            overlap = len(lb_tokens & k_tokens)
+            if overlap > best_score or (overlap == best_score and len(k_tokens) > best_len):
+                best_score, best_len, best_ref = overlap, len(k_tokens), k_ref
+
+        if best_ref:
+            k_slug_only = best_ref.split("/")[-1]
+            k_tokens = set(k_slug_only.split("-"))
+            if best_score >= len(k_tokens) - 1:
+                if best_ref != full_slug:
+                    write(f"   (resolved {lb_slug} → {k_slug_only})")
+                if best_ref not in seen:
+                    resolved.append(best_ref)
+                    seen.add(best_ref)
+                continue
+
+        if full_slug not in seen:
+            resolved.append(full_slug)
+            seen.add(full_slug)
+
+    return resolved
+
+
 def _discover_tasks(api, benchmark_slug: str, kag_client=None, log=None) -> list[str]:
     """
     Return all task notebook slugs inside a benchmark.
 
     Strategy 1: get_benchmark_leaderboard — extracts task slugs directly from
-                the leaderboard API (benchmark_task_slug field).
-    Strategy 2: kernels_list(parent=) — official parent/child API.
+                the leaderboard API, then resolves internal slugs to real kernel
+                refs via token matching against the owner's kernel list.
+    Strategy 2: kernels_list(parent_kernel=) — official parent/child API.
     Strategy 3: treat the slug itself as a single task.
     """
     def write(msg):
@@ -106,7 +174,8 @@ def _discover_tasks(api, benchmark_slug: str, kag_client=None, log=None) -> list
                         short = tr.benchmark_task_slug.rstrip('/').split('/')[-1]
                         task_slugs.add(short)
             if task_slugs:
-                slugs = [f"{username}/{s}" for s in sorted(task_slugs)]
+                raw_slugs = [f"{username}/{s}" for s in sorted(task_slugs)]
+                slugs = _resolve_to_kernel_refs(api, username, raw_slugs, write)
                 write(f"   Found {len(slugs)} task(s) via leaderboard API")
                 return slugs
         except Exception as exc:
@@ -114,7 +183,7 @@ def _discover_tasks(api, benchmark_slug: str, kag_client=None, log=None) -> list
 
     # Strategy 2: kernels_list parent lookup
     try:
-        children = api.kernels_list(parent=benchmark_slug, page_size=100)
+        children = api.kernels_list(parent_kernel=benchmark_slug, page_size=100)
         if children:
             slugs = [k.ref for k in children if k.ref]
             if slugs:
@@ -136,15 +205,37 @@ class MonitorView(Vertical):
     ]
 
     DEFAULT_CSS = """
-    MonitorView { padding: 0 1; height: 1fr; }
-    .section-title { color: $primary; text-style: bold; margin-top: 0; margin-bottom: 0; }
+    MonitorView { padding: 1 2; height: 1fr; }
+    .section-title { color: $text-muted; text-style: bold; margin-top: 1; margin-bottom: 0; }
+    .section-subtitle { color: $text-muted; height: 1; margin-bottom: 1; padding: 0 1; }
+
+    #schedule-row { layout: horizontal; height: 3; align: left middle; margin-bottom: 0; }
+    #time-input { width: 10; }
+    #save-schedule-btn { margin-left: 1; }
+    #schedule-panel { height: 1; color: $text-muted; padding: 0 1; }
 
     #watcher-table {
         height: 6;
         min-height: 3;
-        border: solid $primary 15%;
         background: $surface;
         margin-bottom: 0;
+        margin-top: 1;
+    }
+
+    #empty-hint { display: none; color: $text-muted; padding: 1 2; height: 7; }
+
+    #table-actions { layout: horizontal; height: 3; margin-top: 1; margin-bottom: 0; }
+    #table-actions Button { margin-right: 1; }
+
+    #danger-actions { layout: horizontal; height: 3; margin-top: 0; margin-bottom: 0; }
+    #danger-actions Button { margin-right: 1; }
+
+    #edit-indicator {
+        color: $text-muted;
+        text-style: italic;
+        margin-top: 1;
+        padding: 0 1;
+        height: 1;
     }
 
     .field-row {
@@ -161,31 +252,16 @@ class MonitorView(Vertical):
     }
     .field-input { width: 46; }
 
-    #add-row { layout: horizontal; height: 3; margin-bottom: 0; }
-    #add-row Button { margin-right: 1; min-width: 0; }
-
-    #btn-row { layout: horizontal; height: 3; margin-top: 0; margin-bottom: 0; }
-    #btn-row Button { margin-right: 1; min-width: 0; }
+    #form-actions { layout: horizontal; height: 3; margin-top: 1; margin-bottom: 0; }
+    #form-actions Button { margin-right: 1; }
 
     #monitor-log {
         height: 1fr;
         min-height: 8;
-        border: solid $primary 15%;
         background: $surface;
-        margin-top: 0;
-    }
-
-    #schedule-panel {
-        height: 2;
-        border: solid $primary 15%;
-        background: $surface;
+        margin-top: 1;
         padding: 0 1;
-        margin-top: 0;
-        color: $success;
     }
-    #schedule-row { layout: horizontal; height: 3; align: left middle; margin-bottom: 0; }
-    #time-input { width: 20; }
-    #save-schedule-btn { margin-left: 1; }
 
     #publish-check { margin-bottom: 0; }
     """
@@ -197,15 +273,43 @@ class MonitorView(Vertical):
 
     def compose(self) -> ComposeResult:
         yield Static("Monitor — Auto-Watch Benchmarks", classes="section-title")
+        yield Static(
+            "Schedule daily checks for new task notebooks — found? Pull, merge, and publish automatically.",
+            classes="section-subtitle",
+        )
+
+        # Schedule at top so users see when the next CI run fires
+        with Horizontal(id="schedule-row"):
+            yield Label("Daily at:", classes="field-label")
+            yield Input(placeholder="HH:MM", id="time-input")
+            yield Button("Save & Push", id="save-schedule-btn", variant="primary")
+        yield Static("", id="schedule-panel")
 
         yield DataTable(id="watcher-table", cursor_type="row", zebra_stripes=True)
+        yield Static(
+            "  No watchers yet. To get started:\n"
+            "    1. Fill in the form below — benchmark slug + dataset slug/title\n"
+            "    2. Click Save Watcher\n"
+            "    3. Set a daily time at the top and click Save & Push\n"
+            "       (this commits the schedule to your repo and pushes to GitHub Actions)\n"
+            "  Press ? to read what each button does.",
+            id="empty-hint",
+        )
 
-        with Horizontal(id="btn-row"):
-            yield Button("Check All Now", id="check-btn", variant="primary")
+        # Routine actions
+        with Horizontal(id="table-actions"):
+            yield Button("Check All Now",  id="check-btn",     variant="primary")
             yield Button("Check Selected", id="check-sel-btn", variant="default")
-            yield Button("Remove Selected", id="remove-btn", variant="default")
 
-        yield Static("Add / Edit Watcher", classes="section-title")
+        # Destructive / advanced actions grouped separately
+        with Horizontal(id="danger-actions"):
+            yield Button("Remove Selected",        id="remove-btn",      variant="warning")
+            yield Button("Reset & Re-pull",        id="repull-btn",      variant="warning")
+            yield Button("Sync Watchers → Secret", id="sync-secret-btn", variant="default")
+
+        # Form — editing an existing watcher populates these fields
+        yield Static("New watcher", id="edit-indicator")
+        yield Static("Watcher Settings", classes="section-title")
 
         with Horizontal(classes="field-row"):
             yield Label("Benchmark slug:", classes="field-label")
@@ -221,22 +325,13 @@ class MonitorView(Vertical):
 
         yield Checkbox("Auto-publish when new tasks found", value=True, id="publish-check")
 
-        with Horizontal(id="add-row"):
-            yield Button("Add / Update Watcher", id="add-btn", variant="primary")
-            yield Button("Force Republish Selected", id="republish-btn", variant="default")
-            yield Button("Reset & Re-pull Selected", id="repull-btn", variant="warning")
-            yield Button("Sync Watchers → Secret", id="sync-secret-btn", variant="default")
+        with Horizontal(id="form-actions"):
+            yield Button("Save Watcher",    id="add-btn",       variant="primary")
+            yield Button("Force Republish", id="republish-btn", variant="default")
+            yield Button("New Watcher",     id="new-btn",       variant="default")
 
+        yield Static("Activity Log", classes="section-title")
         yield Log(id="monitor-log", highlight=True)
-
-        yield Static("Daily Schedule", classes="section-title")
-
-        with Horizontal(id="schedule-row"):
-            yield Label("Run daily at:", classes="field-label")
-            yield Input(placeholder="HH:MM", id="time-input")
-            yield Button("Save & Push Schedule", id="save-schedule-btn", variant="primary")
-
-        yield Static("", id="schedule-panel")
 
     def on_mount(self) -> None:
         table = self.query_one("#watcher-table", DataTable)
@@ -312,7 +407,7 @@ class MonitorView(Vertical):
             write(f"[x] git push failed: {r.stderr.strip()}")
             return
 
-        write("✅ Schedule pushed — GitHub Actions will run at the new time.")
+        write("[ok] Schedule pushed — GitHub Actions will run at the new time.")
         status = _next_run_text(True, hh, mm)
         self.app.call_from_thread(self.query_one("#schedule-panel").update, status)
 
@@ -333,6 +428,7 @@ class MonitorView(Vertical):
                 "yes" if entry.get("publish") else "no",
                 key=slug,
             )
+        self.query_one("#empty-hint").display = not bool(self._manifest)
 
     @staticmethod
     def _fmt_dt(iso: str | None) -> str:
@@ -365,6 +461,7 @@ class MonitorView(Vertical):
         self.query_one("#dataset-slug-input", Input).value = entry.get("dataset_slug", "")
         self.query_one("#dataset-title-input", Input).value = entry.get("dataset_title", "")
         self.query_one("#publish-check", Checkbox).value = bool(entry.get("publish", True))
+        self.query_one("#edit-indicator", Static).update(f"Editing: {slug}")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         bid = event.button.id
@@ -392,6 +489,8 @@ class MonitorView(Vertical):
                 self._reset_and_repull(slug)
             else:
                 self.query_one("#monitor-log", Log).write_line("[x] Select a watcher row first.")
+        elif bid == "new-btn":
+            self._clear_form()
         elif bid == "save-schedule-btn":
             self._save_schedule()
         elif bid == "sync-secret-btn":
@@ -403,6 +502,14 @@ class MonitorView(Vertical):
     # ------------------------------------------------------------------ #
     #  Add / Remove                                                        #
     # ------------------------------------------------------------------ #
+
+    def _clear_form(self) -> None:
+        self.query_one("#slug-input",         Input).value = ""
+        self.query_one("#dataset-slug-input",  Input).value = ""
+        self.query_one("#dataset-title-input", Input).value = ""
+        self.query_one("#publish-check", Checkbox).value = True
+        self.query_one("#edit-indicator", Static).update("New watcher")
+        self.query_one("#slug-input", Input).focus()
 
     def _add_watcher(self) -> None:
         log   = self.query_one("#monitor-log", Log)
@@ -442,6 +549,7 @@ class MonitorView(Vertical):
         self.query_one("#slug-input",         Input).value = ""
         self.query_one("#dataset-slug-input",  Input).value = ""
         self.query_one("#dataset-title-input", Input).value = ""
+        self.query_one("#edit-indicator", Static).update("New watcher")
         action = "Updated" if is_update else "Watching"
         log.write_line(f"[ok] {action}: {slug}")
 
@@ -511,14 +619,14 @@ class MonitorView(Vertical):
         now = datetime.now().isoformat(timespec="seconds")
 
         if not new_tasks:
-            write(f"   ✅ No new tasks. ({len(current_tasks)} known)")
+            write(f"   [ok] No new tasks. ({len(current_tasks)} known)")
             entry["last_checked"] = now
             self._manifest[slug]  = entry
             _save_manifest(self._manifest)
             self.app.call_from_thread(self._refresh_table)
             return
 
-        write(f"   🆕 {len(new_tasks)} new task(s): {', '.join(new_tasks)}")
+        write(f"   [+] {len(new_tasks)} new task(s): {', '.join(new_tasks)}")
 
         # ── Pull new tasks ────────────────────────────────────────────
         out_dir = config.output_dir
@@ -547,7 +655,7 @@ class MonitorView(Vertical):
             except Exception as exc:
                 exc_str = str(exc)
                 if "403" in exc_str:
-                    write(f"   ⏳ {task_slug}: no accessible runs yet (403) — skipping.")
+                    write(f"   [~] {task_slug}: no accessible runs yet (403) — skipping.")
                 else:
                     write(f"   [!] List failed: {exc_str}")
                 continue
@@ -565,7 +673,7 @@ class MonitorView(Vertical):
                     write(f"   [!] Download failed: {exc}")
 
         if not all_downloaded:
-            write("   ⚠  No files downloaded.")
+            write("   [!] No files downloaded.")
             entry["last_checked"] = now
             self._manifest[slug]  = entry
             _save_manifest(self._manifest)
@@ -596,10 +704,21 @@ class MonitorView(Vertical):
                 shutil.rmtree(staging)
             staging.mkdir(parents=True, exist_ok=True)
 
-            for csv_name in ("evalflow_sft.csv", "evalflow_preferences.csv"):
-                src = out_dir / csv_name
+            sft_src  = out_dir / "evalflow_sft.csv"
+            pref_src = out_dir / "evalflow_preferences.csv"
+            for src in [sft_src, pref_src,
+                        sft_src.with_suffix(".parquet"),
+                        pref_src.with_suffix(".parquet")]:
                 if src.exists():
-                    shutil.copy2(src, staging / csv_name)
+                    shutil.copy2(src, staging / src.name)
+
+            from views.publish_view import build_dataset_card
+            (staging / "README.md").write_text(build_dataset_card(
+                title=ds_title,
+                description="",
+                sft_rows=_row_count(sft_src),
+                pref_pairs=_row_count(pref_src),
+            ), encoding="utf-8")
 
             (staging / "dataset-metadata.json").write_text(json.dumps({
                 "title":    ds_title,
@@ -666,10 +785,19 @@ class MonitorView(Vertical):
         if staging.exists():
             shutil.rmtree(staging)
         staging.mkdir(parents=True, exist_ok=True)
-        for csv_name, src in [("evalflow_sft.csv", sft_src), ("evalflow_preferences.csv", pref_src)]:
+        for src in [sft_src, pref_src,
+                    sft_src.with_suffix(".parquet"),
+                    pref_src.with_suffix(".parquet")]:
             if src.exists():
-                shutil.copy2(src, staging / csv_name)
+                shutil.copy2(src, staging / src.name)
         import json
+        from views.publish_view import build_dataset_card
+        (staging / "README.md").write_text(build_dataset_card(
+            title=ds_title,
+            description="",
+            sft_rows=_row_count(sft_src),
+            pref_pairs=_row_count(pref_src),
+        ), encoding="utf-8")
         (staging / "dataset-metadata.json").write_text(json.dumps({
             "title":    ds_title,
             "id":       f"{username}/{ds_slug}",
@@ -743,7 +871,7 @@ class MonitorView(Vertical):
             json={"encrypted_value": encrypted, "key_id": pk_data["key_id"]},
         )
         if r.status_code in (201, 204):
-            write(f"✅ EVALFLOW_MANIFEST secret updated ({len(self._manifest)} watcher(s))")
+            write(f"[ok] EVALFLOW_MANIFEST secret updated ({len(self._manifest)} watcher(s))")
         else:
             write(f"[x] Failed to update secret: {r.status_code} {r.text}")
 

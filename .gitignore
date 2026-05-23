@@ -1,28 +1,53 @@
-# Windows Zone.Identifier alternate data streams (created when copying from Windows)
+# ── OS artifacts ──────────────────────────────────────────────────────────────
 *:Zone.Identifier
+.DS_Store
+Thumbs.db
+desktop.ini
 
-# Python
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *.egg-info/
-.venv/
-venv/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
 
-# App data — credentials and session files, never commit these
+# ── Virtual environments ───────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+
+# ── Credentials & secrets — never commit these ────────────────────────────────
 .env
-.env.bak
+.env.*
+kaggle.json
+*.pem
+*.key
+
+# ── App runtime state ─────────────────────────────────────────────────────────
 .evalflow_manifest.json
 .evalflow_slug_history.json
 .evalflow_publish_state.json
 outputs/
 data/
 
-# Runtime logs
-monitor.log
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
 
-# Kaggle
-kaggle.json
+# ── Markdown — only README.md is public ───────────────────────────────────────
+*.md
+!README.md
 
-# IDE / tooling
+# ── Internal docs & tooling ───────────────────────────────────────────────────
+docs/
 .claude/
-CLAUDE.md
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
