@@ -100,13 +100,8 @@ EVALFLOW_THEME = Theme(
     dark       = False,
 )
 
-# 4-row goose, brand-blue (#7DC8E8), facing right.
-GOOSE = (
-    " [#7DC8E8]▄██[/#7DC8E8]\n"
-    "[#7DC8E8]▄███[/#7DC8E8]\n"
-    "[#7DC8E8]████▀[/#7DC8E8]\n"
-    " [#7DC8E8]▌ ▌[/#7DC8E8]"
-)
+# Half-block goose (4 rows, no inline markup — colour applied via CSS).
+GOOSE = " ▄██\n▄███\n████▀\n ▌ ▌"
 
 NAV_ITEMS = [
     ("pull",        "Pull",        "1", "download runs"),
@@ -137,10 +132,9 @@ class NavItem(Static):
         border-left: thick #B0B0B8;
     }
     NavItem.active {
-        background: $primary 15%;
-        color: $primary;
+        background: $primary;
+        color: white;
         text-style: bold;
-        border-left: thick $primary;
     }
     NavItem.small {
         height: 2;
@@ -191,7 +185,10 @@ class BrandHeader(Horizontal):
     BrandHeader #brand-goose {
         width: 7;
         height: 4;
-        content-align: left top;
+        content-align: center middle;
+        background: #C9E7F4;
+        border: round #B8DCEF;
+        color: #7DC8E8;
     }
     BrandHeader #brand-name {
         width: 1fr;
@@ -202,7 +199,7 @@ class BrandHeader(Horizontal):
     """
 
     def compose(self) -> ComposeResult:
-        yield Static(GOOSE, markup=True, id="brand-goose")
+        yield Static(GOOSE, id="brand-goose")
         yield Static(
             f"[bold]evalflow[/bold]\n[dim]v{__version__}[/dim]",
             markup=True,

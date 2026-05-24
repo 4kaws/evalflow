@@ -132,7 +132,7 @@ class HelpView(Vertical):
                 id="help-scroll",
             )
             with Horizontal(id="help-close-row"):
-                yield Button("Close  [dim]Esc / ?[/dim]", id="help-close-btn", markup=True)
+                yield Button("Close  Esc / ?", id="help-close-btn")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "help-close-btn":
