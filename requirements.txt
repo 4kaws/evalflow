@@ -5,7 +5,4 @@ kaggle>=1.6.0,<2.0.0
 kagglesdk>=0.1.0
 requests>=2.31.0
 PyNaCl>=1.5.0
-
-# Optional — install for Parquet output (type-safe, HuggingFace-ready):
-#   pip install pyarrow
-# Without it, only CSV is written; Parquet files are skipped silently.
+pyarrow>=14.0.0

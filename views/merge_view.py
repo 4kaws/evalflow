@@ -231,8 +231,6 @@ class MergeView(Vertical):
             log.write_line(f"[ok] evalflow_preferences.csv — {len(pref_df)} preference pairs")
             if stats.get("parquet_written"):
                 log.write_line("[ok] .parquet variants written  (type-safe, HuggingFace-ready)")
-            else:
-                log.write_line("[i]  Parquet skipped — run: pip install pyarrow  to enable")
 
             if stats["files_skipped"]:
                 log.write_line(f"[!]  {stats['files_skipped']} file(s) skipped:")
