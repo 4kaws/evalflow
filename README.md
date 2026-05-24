@@ -37,10 +37,9 @@ other researchers can build on your benchmark results.
 Kaggle (browser)                              Evalflow (terminal)
 ─────────────────────────────────────         ──────────────────────────────────────
 1. Write your task notebooks                  5. Pull
-   (use notebooks/notebook_template.ipynb)       Paste your benchmark slug once.
-   One notebook per task.                        Evalflow auto-discovers all task
-                                                 notebooks and downloads every
-2. Group them into a Benchmark                   .run.json output file.
+   One notebook per task.                        Paste your benchmark slug once.
+                                                 Evalflow auto-discovers all tasks
+2. Group them into a Benchmark                   and downloads every .run.json file.
    on kaggle.com/benchmarks
                                              6. Results
 3. Click Add Models on the                       Browse pulled data, filter by
@@ -209,32 +208,36 @@ After merging, Evalflow produces two CSVs ready for AI researchers to use direct
 
 ### `evalflow_sft.csv` — SFT / fine-tuning format
 
-One row per model response, across all tasks and all models.
+One row per passing model response, across all tasks and all models.
 
 | Column | Description |
 |--------|-------------|
 | `task_name` | Benchmark task identifier |
-| `category` / `difficulty` | For slice analysis and curriculum filtering |
-| `model_name` / `model_version` | Full model identifier |
+| `task_description` | Human-readable task description |
+| `model_name` | Full model identifier |
 | `question` / `ground_truth` | Input and expected answer |
 | `prompt_template` | Exact system prompt used |
 | `messages` | Full conversation in `[{"role", "content"}]` JSON — SFT-ready |
 | `llm_response` | Raw model output |
-| `score` | Overall pass/fail (0/1) |
+| `score` | Pass/fail (0/1) |
+| `reasoning` | Failed assertion messages, pipe-separated |
+| `assertions_json` | Full assertion array with statuses |
+| `task_definition` | Source code of the task function |
+| `judge_model` | Model used for response assessment (if any) |
 | `input_tokens` / `output_tokens` | Token counts from the run |
 | `timestamp` | ISO 8601 run timestamp |
 
 ### `evalflow_preferences.csv` — RLHF / DPO preference pairs
 
 One row per question where at least one model **passed** and at least one **failed**.
-Built automatically at merge time — no extra work needed.
+Column names match the HuggingFace TRL `DPOTrainer` convention.
 
 | Column | Description |
 |--------|-------------|
 | `task_name` | Task identifier |
-| `question` / `ground_truth` | Shared question metadata |
-| `chosen_response` / `chosen_model` | Best passing response |
-| `rejected_response` / `rejected_model` | Worst failing response |
+| `prompt` / `ground_truth` | Shared question and expected answer |
+| `chosen` / `chosen_model` | Best passing response and its model |
+| `rejected` / `rejected_model` | Worst failing response and its model |
 | `timestamp` | ISO 8601 timestamp |
 
 Questions where all models pass or all fail are excluded — they carry no preference signal.
@@ -252,9 +255,7 @@ task notebooks automatically using a 3-strategy fallback:
    to find notebooks grouped under the benchmark.
 3. **Single-task fallback** — if neither works, treats the slug itself as a single task.
 
-Output files are prefixed with the task's short name before saving, so files from multiple
-tasks land in `outputs/` without collisions. The `outputs/` directory is wiped clean on
-every TUI launch so you always start fresh.
+The `outputs/` directory is wiped clean on every TUI launch so you always start fresh.
 
 ---
 
@@ -265,18 +266,19 @@ publish automatically, with no manual steps.
 
 **Adding a watcher:**
 1. Enter the benchmark slug, dataset slug, dataset title, and whether to auto-publish
-2. Click **Add / Update Watcher**
+2. Click **Save Watcher**
 3. Click a row in the table to load its settings back into the form for editing
 
 **Running checks:**
 - **Check All Now** — checks every watcher immediately
 - **Check Selected** — checks only the highlighted watcher
-- **Force Republish Selected** — re-publishes the current merged outputs without waiting for new tasks
+- **Force Republish** — re-publishes the current merged outputs without waiting for new tasks
+- **Reset & Re-pull** — clears known tasks for the selected watcher and re-pulls everything
 
 **Daily schedule:**
-- Set a time in `HH:MM` format and click **Save & Push Schedule**
-- This updates the GitHub Actions workflow file and pushes to GitHub automatically
-- The schedule runs on GitHub's servers in the `Europe/Bucharest` timezone — your machine can be off
+- Set a time in `HH:MM` format and click **Save & Push**
+- This commits the schedule to the GitHub Actions workflow file and pushes automatically
+- The schedule runs on GitHub's servers — your machine can be off
 
 **Syncing watchers to GitHub:**
 Watcher configuration is stored as the `EVALFLOW_MANIFEST` GitHub Actions secret (not in the repo).
@@ -290,48 +292,13 @@ when your machine is off. See the CI section below.
 
 ---
 
-## Your Benchmark Notebook
-
-`notebooks/notebook_template.ipynb` is the starting point for writing benchmark tasks.
-It uses the `kbench` library format:
-
-**Cell 1** — lists all available models:
-```python
-import kbench
-for m in kbench.available_models():
-    print(m)
-```
-
-**Cell 2** — defines your task and runs it against each model:
-```python
-MODELS = [
-    "google/gemini-2.5-flash",
-    "anthropic/claude-opus-4-6@default",
-    # add or remove models here
-]
-
-@kbench.task(name="What is Kaggle?", description="Does the LLM know what Kaggle is?")
-def what_is_kaggle(llm) -> None:
-    response = llm.prompt("What is Kaggle?")
-    kbench.assertions.assert_in("data science", response.lower())
-
-for model in MODELS:
-    what_is_kaggle.run(model)
-```
-
-Customise `name`, `description`, the prompt, the assertion logic, and the `MODELS` list.
-Upload to Kaggle, hit **Save Version**, group it into a Benchmark, then use **Add Models**
-to run it across multiple LLMs — free within your Kaggle quota.
-
----
-
 ## CI / GitHub Actions
 
 `.github/workflows/evalflow_ci.yml` provides two modes:
 
 ### Daily schedule (automatic)
 
-Runs every day at the time configured in the Monitor tab (Europe/Bucharest timezone).
+Runs every day at the time configured in the Monitor tab.
 Calls `monitor.py --all`, which reads the `EVALFLOW_MANIFEST` GitHub Actions secret to
 know which benchmarks to check and which dataset to publish to.
 
@@ -381,7 +348,7 @@ evalflow/
 ├── evalflow.py              ← Textual app entry point + navigation
 ├── setup_wizard.py          ← First-run credential setup wizard
 ├── ci_runner.py             ← Headless pull/merge/publish for manual CI runs
-├── monitor.py               ← Headless watcher runner (used by cron + GitHub Actions)
+├── monitor.py               ← Headless watcher runner (used by GitHub Actions)
 ├── config.py                ← .env-based configuration
 ├── requirements.txt
 ├── .evalflow_manifest.json  ← Watcher state (gitignored — synced via EVALFLOW_MANIFEST secret)
@@ -391,16 +358,15 @@ evalflow/
 ├── core/
 │   ├── merger.py            ← Builds evalflow_sft.csv + evalflow_preferences.csv
 │   └── uploader.py          ← Kaggle Datasets API wrapper (appends on update)
-├── views/
-│   ├── pull_view.py         ← Auto-discovers + pulls all tasks
-│   ├── results_view.py      ← Browse outputs, filter by model / score
-│   ├── leaderboard_view.py  ← Cross-model ranking + per-question diff
-│   ├── merge_view.py        ← Merge into SFT + preference formats
-│   ├── publish_view.py      ← Upload both CSVs to Kaggle Datasets
-│   ├── monitor_view.py      ← Auto-watch benchmarks, manage schedule
-│   └── help_view.py         ← In-app help panel
-└── notebooks/
-    └── notebook_template.ipynb  ← Template for benchmark task authors
+└── views/
+    ├── pull_view.py         ← Auto-discovers + pulls all tasks
+    ├── results_view.py      ← Browse outputs, filter by model / score
+    ├── leaderboard_view.py  ← Cross-model ranking + per-question diff
+    ├── merge_view.py        ← Merge into SFT + preference formats
+    ├── publish_view.py      ← Upload both CSVs to Kaggle Datasets
+    ├── monitor_view.py      ← Auto-watch benchmarks, manage schedule
+    ├── help_view.py         ← In-app help panel
+    └── widgets.py           ← Shared UI components
 ```
 
 ---
