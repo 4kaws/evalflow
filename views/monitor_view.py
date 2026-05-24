@@ -375,7 +375,7 @@ class MonitorView(Vertical):
 
         try:
             _set_schedule_in_workflow(hh, mm)
-            write(f"\n>> Schedule set to {hh:02d}:{mm:02d} Europe/Bucharest — pushing to GitHub …")
+            write(f"\n>> Schedule set to {hh:02d}:{mm:02d} {_WORKFLOW_TZ} — pushing to GitHub …")
         except Exception as exc:
             write(f"[x] Could not update workflow file: {exc}")
             return
@@ -389,7 +389,7 @@ class MonitorView(Vertical):
             return
 
         r = subprocess.run(
-            ["git", "-C", _WORKDIR, "commit", "-m", f"chore: set monitor schedule to {hh:02d}:{mm:02d} EET"],
+            ["git", "-C", _WORKDIR, "commit", "-m", f"chore: set monitor schedule to {hh:02d}:{mm:02d} {_WORKFLOW_TZ}"],
             capture_output=True, text=True,
         )
         if r.returncode != 0:
