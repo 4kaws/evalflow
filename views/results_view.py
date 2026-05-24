@@ -8,6 +8,7 @@ from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual.widgets import Button, DataTable, Label, Select, Static
 
 from config import config
+from views.widgets import PageHeader
 
 
 class ResultsView(Vertical):
@@ -39,18 +40,27 @@ class ResultsView(Vertical):
         self.app.action_unfocus()
 
     DEFAULT_CSS = """
-    ResultsView { padding: 1 2; height: 1fr; }
-    .section-title { color: $text-muted; text-style: bold; margin-bottom: 0; margin-top: 1; }
+    ResultsView { padding: 0; height: 1fr; }
+
+    #results-body { padding: 1 3; height: 1fr; }
+
+    .section-title { color: #86868B; text-style: bold; margin-bottom: 0; margin-top: 1; }
 
     #filter-bar { height: 3; align: left middle; margin-bottom: 0; }
-    #filter-bar Label { width: 8; color: $text-muted; }
+    #filter-bar Label { width: 8; color: #86868B; }
     #filter-bar Select { width: 24; margin-right: 2; }
     #refresh-btn { margin-left: 1; }
 
-    #results-table { height: 1fr; min-height: 6; margin-top: 1; background: $surface; }
+    #results-table {
+        height: 1fr;
+        min-height: 6;
+        margin-top: 1;
+        background: $surface;
+        border: round #E5E5E7;
+    }
 
     #stats-bar {
-        color: $text-muted;
+        color: #86868B;
         height: 1;
         margin-top: 0;
         padding: 0 1;
@@ -61,6 +71,7 @@ class ResultsView(Vertical):
         min-height: 6;
         margin-top: 1;
         background: $surface;
+        border: round #E5E5E7;
         padding: 1 2;
     }
     """
@@ -71,24 +82,31 @@ class ResultsView(Vertical):
         self._filtered_df: pd.DataFrame = pd.DataFrame()
 
     def compose(self) -> ComposeResult:
-        yield Static("Benchmark Results", classes="section-title")
+        yield PageHeader(
+            "Results",
+            "Browse, filter, and inspect every model response.",
+        )
+        with Vertical(id="results-body"):
+            with Horizontal(id="filter-bar"):
+                yield Label("Task:")
+                yield Select([("All tasks", "all")], value="all", id="task-filter")
+                yield Label("Model:")
+                yield Select([("All models", "all")], value="all", id="model-filter")
+                yield Label("Score:")
+                yield Select(
+                    [("All", "all"), ("Pass ✓", "1"), ("Fail ✗", "0")],
+                    value="all",
+                    id="score-filter",
+                )
+                yield Button("Refresh", id="refresh-btn", variant="default")
 
-        with Horizontal(id="filter-bar"):
-            yield Label("Task:")
-            yield Select([("All tasks", "all")], value="all", id="task-filter")
-            yield Label("Model:")
-            yield Select([("All models", "all")], value="all", id="model-filter")
-            yield Label("Score:")
-            yield Select(
-                [("All", "all"), ("Pass ✓", "1"), ("Fail ✗", "0")],
-                value="all",
-                id="score-filter",
+            yield DataTable(id="results-table", cursor_type="row", zebra_stripes=True)
+            yield Static("", id="stats-bar")
+            yield Static(
+                "Select a task above to pull results, then pick a row to read the full response.",
+                id="detail-panel",
+                markup=True,
             )
-            yield Button("Refresh", id="refresh-btn", variant="default")
-
-        yield DataTable(id="results-table", cursor_type="row", zebra_stripes=True)
-        yield Static("", id="stats-bar")
-        yield Static("Select a task above to pull results, then pick a row to read the full response.", id="detail-panel", markup=True)
 
     def on_mount(self) -> None:
         table = self.query_one("#results-table", DataTable)

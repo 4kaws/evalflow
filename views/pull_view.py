@@ -16,6 +16,7 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Checkbox, DataTable, Input, Label, Log, Static
 
 from config import config
+from views.widgets import PageHeader
 
 _HISTORY_FILE = Path(".evalflow_slug_history.json")
 _MAX_HISTORY  = 10
@@ -92,10 +93,12 @@ class PullView(Vertical):
             self.app.action_unfocus()
 
     DEFAULT_CSS = """
-    PullView { padding: 1 2; height: 1fr; }
+    PullView { padding: 0; height: 1fr; }
+
+    #pull-body { padding: 1 3; height: 1fr; }
 
     .section-title {
-        color: $text-muted;
+        color: #86868B;
         text-style: bold;
         margin-top: 1;
         margin-bottom: 0;
@@ -109,14 +112,14 @@ class PullView(Vertical):
     .field-label {
         width: 20;
         height: 3;
-        color: $text-muted;
+        color: #86868B;
         content-align: right middle;
         padding-right: 2;
     }
     #history-display {
         height: 3;
         width: 48;
-        color: $text-muted;
+        color: #86868B;
         content-align: left middle;
         padding-left: 1;
     }
@@ -129,6 +132,7 @@ class PullView(Vertical):
         height: 1fr;
         min-height: 4;
         background: $surface;
+        border: round #E5E5E7;
         margin-top: 1;
         padding: 0 1;
     }
@@ -137,17 +141,18 @@ class PullView(Vertical):
         height: 1fr;
         min-height: 4;
         background: $surface;
+        border: round #E5E5E7;
         margin-top: 1;
     }
 
     #status-bar {
-        color: $text-muted;
+        color: #86868B;
         height: 1;
         margin-top: 0;
         padding: 0 1;
     }
 
-    #creds-note { color: $text-muted; margin-bottom: 0; }
+    #creds-note { color: #86868B; margin-bottom: 0; }
     """
 
     def __init__(self, **kwargs):
@@ -155,49 +160,54 @@ class PullView(Vertical):
         self._history: list[str] = _load_history()
 
     def compose(self) -> ComposeResult:
-        yield Static("Pull Benchmark from Kaggle", classes="section-title")
-        yield Static(
-            "Requires KAGGLE_USERNAME + KAGGLE_KEY  (set via wizard or .env).",
-            id="creds-note",
+        yield PageHeader(
+            "Pull",
+            "Auto-discover and download all task runs from a Kaggle benchmark.",
         )
-
-        # Main input: benchmark slug
-        with Horizontal(classes="field-row"):
-            yield Label("Task prefix slug:", classes="field-label")
-            yield Input(
-                placeholder="username/notebook-name  (from Kaggle benchmark URL)",
-                id="slug-input",
-                classes="field-input",
+        with Vertical(id="pull-body"):
+            yield Static(
+                "Requires KAGGLE_USERNAME + KAGGLE_KEY  (set via wizard [dim]w[/dim] or .env).",
+                id="creds-note",
+                markup=True,
             )
 
-        # Recent slugs (read-only display)
-        with Horizontal(classes="field-row"):
-            yield Label("Recent:", classes="field-label")
-            yield Static("", id="history-display")
+            # Main input: benchmark slug
+            with Horizontal(classes="field-row"):
+                yield Label("Task prefix slug:", classes="field-label")
+                yield Input(
+                    placeholder="username/notebook-name  (from Kaggle benchmark URL)",
+                    id="slug-input",
+                    classes="field-input",
+                )
 
-        # Output dir
-        with Horizontal(classes="field-row"):
-            yield Label("Save to:", classes="field-label")
-            yield Input(
-                value=str(config.output_dir),
-                id="outdir-input",
-                classes="field-input",
-            )
+            # Recent slugs (read-only display)
+            with Horizontal(classes="field-row"):
+                yield Label("Recent:", classes="field-label")
+                yield Static("", id="history-display")
 
-        # Auto-navigate to merge
-        yield Checkbox("Go to Merge after pull", value=True, id="auto-merge-switch")
+            # Output dir
+            with Horizontal(classes="field-row"):
+                yield Label("Save to:", classes="field-label")
+                yield Input(
+                    value=str(config.output_dir),
+                    id="outdir-input",
+                    classes="field-input",
+                )
 
-        with Horizontal(id="btn-row"):
-            yield Button("Pull All Tasks",  id="pull-btn",  variant="primary")
-            yield Button("List tasks only", id="list-btn",  variant="default")
-            yield Button("Open on Kaggle",  id="open-btn",  variant="default")
+            # Auto-navigate to merge
+            yield Checkbox("Go to Merge after pull", value=True, id="auto-merge-switch")
 
-        yield Static("Pull Log", classes="section-title")
-        yield Log(id="pull-log", highlight=True)
+            with Horizontal(id="btn-row"):
+                yield Button("Pull All Tasks",  id="pull-btn",  variant="primary")
+                yield Button("List tasks only", id="list-btn",  variant="default")
+                yield Button("Open on Kaggle",  id="open-btn",  variant="default")
 
-        yield Static("Downloaded Files", classes="section-title")
-        yield DataTable(id="pulled-table", cursor_type="row", zebra_stripes=True)
-        yield Static("", id="status-bar")
+            yield Static("Pull Log", classes="section-title")
+            yield Log(id="pull-log", highlight=True)
+
+            yield Static("Downloaded Files", classes="section-title")
+            yield DataTable(id="pulled-table", cursor_type="row", zebra_stripes=True)
+            yield Static("", id="status-bar")
 
     def on_mount(self) -> None:
         table = self.query_one("#pulled-table", DataTable)

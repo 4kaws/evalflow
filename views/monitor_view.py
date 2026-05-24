@@ -13,6 +13,7 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Checkbox, DataTable, Input, Label, Log, Static
 
 from config import config
+from views.widgets import PageHeader
 
 MANIFEST_FILE = Path(".evalflow_manifest.json")
 
@@ -205,24 +206,28 @@ class MonitorView(Vertical):
     ]
 
     DEFAULT_CSS = """
-    MonitorView { padding: 1 2; height: 1fr; }
-    .section-title { color: $text-muted; text-style: bold; margin-top: 1; margin-bottom: 0; }
-    .section-subtitle { color: $text-muted; height: 1; margin-bottom: 1; padding: 0 1; }
+    MonitorView { padding: 0; height: 1fr; }
+
+    #monitor-body { padding: 1 3; height: 1fr; overflow-y: auto; }
+
+    .section-title { color: #86868B; text-style: bold; margin-top: 1; margin-bottom: 0; }
+    .section-subtitle { color: #86868B; height: 1; margin-bottom: 1; padding: 0 1; }
 
     #schedule-row { layout: horizontal; height: 3; align: left middle; margin-bottom: 0; }
     #time-input { width: 10; }
     #save-schedule-btn { margin-left: 1; }
-    #schedule-panel { height: 1; color: $text-muted; padding: 0 1; }
+    #schedule-panel { height: 1; color: #86868B; padding: 0 1; }
 
     #watcher-table {
         height: 6;
         min-height: 3;
         background: $surface;
+        border: round #E5E5E7;
         margin-bottom: 0;
         margin-top: 1;
     }
 
-    #empty-hint { display: none; color: $text-muted; padding: 1 2; height: 7; }
+    #empty-hint { display: none; color: #86868B; padding: 1 2; height: 7; }
 
     #table-actions { layout: horizontal; height: 3; margin-top: 1; margin-bottom: 0; }
     #table-actions Button { margin-right: 1; }
@@ -231,7 +236,7 @@ class MonitorView(Vertical):
     #danger-actions Button { margin-right: 1; }
 
     #edit-indicator {
-        color: $text-muted;
+        color: #86868B;
         text-style: italic;
         margin-top: 1;
         padding: 0 1;
@@ -246,7 +251,7 @@ class MonitorView(Vertical):
     }
     .field-label {
         width: 20;
-        color: $text-muted;
+        color: #86868B;
         content-align: right middle;
         padding-right: 2;
     }
@@ -259,6 +264,7 @@ class MonitorView(Vertical):
         height: 1fr;
         min-height: 8;
         background: $surface;
+        border: round #E5E5E7;
         margin-top: 1;
         padding: 0 1;
     }
@@ -272,66 +278,65 @@ class MonitorView(Vertical):
         self._log_file_pos: int = 0   # byte offset — only new lines are appended
 
     def compose(self) -> ComposeResult:
-        yield Static("Monitor — Auto-Watch Benchmarks", classes="section-title")
-        yield Static(
-            "Schedule daily checks for new task notebooks — found? Pull, merge, and publish automatically.",
-            classes="section-subtitle",
+        yield PageHeader(
+            "Monitor",
+            "Watch benchmarks — pull, merge, publish on a daily schedule.",
         )
+        with Vertical(id="monitor-body"):
+            # Schedule at top so users see when the next CI run fires
+            with Horizontal(id="schedule-row"):
+                yield Label("Daily at:", classes="field-label")
+                yield Input(placeholder="HH:MM", id="time-input")
+                yield Button("Save & Push", id="save-schedule-btn", variant="primary")
+            yield Static("", id="schedule-panel")
 
-        # Schedule at top so users see when the next CI run fires
-        with Horizontal(id="schedule-row"):
-            yield Label("Daily at:", classes="field-label")
-            yield Input(placeholder="HH:MM", id="time-input")
-            yield Button("Save & Push", id="save-schedule-btn", variant="primary")
-        yield Static("", id="schedule-panel")
+            yield DataTable(id="watcher-table", cursor_type="row", zebra_stripes=True)
+            yield Static(
+                "  No watchers yet. To get started:\n"
+                "    1. Fill in the form below — benchmark slug + dataset slug/title\n"
+                "    2. Click Save Watcher\n"
+                "    3. Set a daily time at the top and click Save & Push\n"
+                "       (this commits the schedule to your repo and pushes to GitHub Actions)\n"
+                "  Press ? to read what each button does.",
+                id="empty-hint",
+            )
 
-        yield DataTable(id="watcher-table", cursor_type="row", zebra_stripes=True)
-        yield Static(
-            "  No watchers yet. To get started:\n"
-            "    1. Fill in the form below — benchmark slug + dataset slug/title\n"
-            "    2. Click Save Watcher\n"
-            "    3. Set a daily time at the top and click Save & Push\n"
-            "       (this commits the schedule to your repo and pushes to GitHub Actions)\n"
-            "  Press ? to read what each button does.",
-            id="empty-hint",
-        )
+            # Routine actions
+            with Horizontal(id="table-actions"):
+                yield Button("Check All Now",  id="check-btn",     variant="primary")
+                yield Button("Check Selected", id="check-sel-btn", variant="default")
 
-        # Routine actions
-        with Horizontal(id="table-actions"):
-            yield Button("Check All Now",  id="check-btn",     variant="primary")
-            yield Button("Check Selected", id="check-sel-btn", variant="default")
+            # Destructive / advanced actions grouped separately
+            with Horizontal(id="danger-actions"):
+                yield Button("Remove Selected",        id="remove-btn",      variant="warning")
+                yield Button("Reset & Re-pull",        id="repull-btn",      variant="warning")
+                yield Button("Sync Watchers → Secret", id="sync-secret-btn", variant="default")
 
-        # Destructive / advanced actions grouped separately
-        with Horizontal(id="danger-actions"):
-            yield Button("Remove Selected",        id="remove-btn",      variant="warning")
-            yield Button("Reset & Re-pull",        id="repull-btn",      variant="warning")
-            yield Button("Sync Watchers → Secret", id="sync-secret-btn", variant="default")
+            # Form — editing an existing watcher populates these fields
+            yield Static("New watcher", id="edit-indicator")
+            yield Static("Watcher Settings", classes="section-title")
 
-        # Form — editing an existing watcher populates these fields
-        yield Static("New watcher", id="edit-indicator")
-        yield Static("Watcher Settings", classes="section-title")
+            with Horizontal(classes="field-row"):
+                yield Label("Benchmark slug:", classes="field-label")
+                yield Input(placeholder="username/benchmark-name", id="slug-input", classes="field-input")
 
-        with Horizontal(classes="field-row"):
-            yield Label("Benchmark slug:", classes="field-label")
-            yield Input(placeholder="username/benchmark-name", id="slug-input", classes="field-input")
+            with Horizontal(classes="field-row"):
+                yield Label("Dataset slug:", classes="field-label")
+                yield Input(placeholder="my-benchmark-results", id="dataset-slug-input", classes="field-input")
 
-        with Horizontal(classes="field-row"):
-            yield Label("Dataset slug:", classes="field-label")
-            yield Input(placeholder="my-benchmark-results", id="dataset-slug-input", classes="field-input")
+            with Horizontal(classes="field-row"):
+                yield Label("Dataset title:", classes="field-label")
+                yield Input(placeholder="My Benchmark Results", id="dataset-title-input", classes="field-input")
 
-        with Horizontal(classes="field-row"):
-            yield Label("Dataset title:", classes="field-label")
-            yield Input(placeholder="My Benchmark Results", id="dataset-title-input", classes="field-input")
+            yield Checkbox("Auto-publish when new tasks found", value=True, id="publish-check")
 
-        yield Checkbox("Auto-publish when new tasks found", value=True, id="publish-check")
+            with Horizontal(id="form-actions"):
+                yield Button("Save Watcher",    id="add-btn",       variant="primary")
+                yield Button("Force Republish", id="republish-btn", variant="default")
+                yield Button("New Watcher",     id="new-btn",       variant="default")
 
-        with Horizontal(id="form-actions"):
-            yield Button("Save Watcher",    id="add-btn",       variant="primary")
-            yield Button("Force Republish", id="republish-btn", variant="default")
-            yield Button("New Watcher",     id="new-btn",       variant="default")
-
-        yield Static("Activity Log", classes="section-title")
-        yield Log(id="monitor-log", highlight=True)
+            yield Static("Activity Log", classes="section-title")
+            yield Log(id="monitor-log", highlight=True)
 
     def on_mount(self) -> None:
         table = self.query_one("#watcher-table", DataTable)

@@ -9,6 +9,7 @@ from textual.widgets import Button, Checkbox, Input, Label, Log, Static
 
 from config import config
 from core.merger import discover_outputs, merge_outputs, validate_run_json
+from views.widgets import PageHeader
 
 
 class MergeView(Vertical):
@@ -68,13 +69,17 @@ class MergeView(Vertical):
         self.app.action_unfocus()
 
     DEFAULT_CSS = """
-    MergeView { padding: 1 2; height: 1fr; }
-    .section-title { color: $text-muted; text-style: bold; margin-bottom: 0; margin-top: 1; }
+    MergeView { padding: 0; height: 1fr; }
+
+    #merge-body { padding: 1 3; height: 1fr; }
+
+    .section-title { color: #86868B; text-style: bold; margin-bottom: 0; margin-top: 1; }
 
     #file-list {
         height: 1fr;
         min-height: 4;
         background: $surface;
+        border: round #E5E5E7;
         padding: 0 1;
         margin-bottom: 0;
         overflow-y: auto;
@@ -87,6 +92,7 @@ class MergeView(Vertical):
         height: 1fr;
         min-height: 4;
         background: $surface;
+        border: round #E5E5E7;
         margin-top: 1;
         padding: 0 1;
     }
@@ -94,9 +100,10 @@ class MergeView(Vertical):
     #stats-panel {
         height: auto;
         background: $surface;
+        border: round #E5E5E7;
         padding: 1 2;
         margin-top: 1;
-        color: $text-muted;
+        color: #86868B;
     }
     """
 
@@ -106,32 +113,36 @@ class MergeView(Vertical):
         self._listed_files: list[str] = []
 
     def compose(self) -> ComposeResult:
-        yield Static("Merge Benchmark Outputs", classes="section-title")
-        yield Static(
-            "Select pulled .run.json files to merge. Two files will be produced:\n"
-            "  + evalflow_sft.csv / .parquet           — SFT / fine-tuning format (passing responses)\n"
-            "  + evalflow_preferences.csv / .parquet   — DPO preference pairs (prompt/chosen/rejected)",
-            id="format-note",
+        yield PageHeader(
+            "Merge",
+            "Combine every pulled run into two research-ready datasets.",
         )
+        with Vertical(id="merge-body"):
+            yield Static(
+                "Select pulled .run.json files to merge. Two files will be produced:\n"
+                "  + evalflow_sft.csv / .parquet           — SFT / fine-tuning format (passing responses)\n"
+                "  + evalflow_preferences.csv / .parquet   — DPO preference pairs (prompt/chosen/rejected)",
+                id="format-note",
+            )
 
-        yield Static("Select files to merge:", classes="section-title")
-        yield ScrollableContainer(id="file-list")
+            yield Static("Select files to merge:", classes="section-title")
+            yield ScrollableContainer(id="file-list")
 
-        yield Checkbox("Remove duplicate rows", value=True, id="dedup-switch")
-        yield Checkbox(
-            "SFT: include passing responses only  (recommended for fine-tuning)",
-            value=True,
-            id="passing-only-switch",
-        )
+            yield Checkbox("Remove duplicate rows", value=True, id="dedup-switch")
+            yield Checkbox(
+                "SFT: include passing responses only  (recommended for fine-tuning)",
+                value=True,
+                id="passing-only-switch",
+            )
 
-        with Horizontal(id="btn-row"):
-            yield Button("Merge Selected", id="merge-btn", variant="primary")
-            yield Button("Refresh",        id="refresh-btn")
-            yield Button("Select All",     id="selectall-btn")
+            with Horizontal(id="btn-row"):
+                yield Button("Merge Selected", id="merge-btn", variant="primary")
+                yield Button("Refresh",        id="refresh-btn")
+                yield Button("Select All",     id="selectall-btn")
 
-        yield Static("Merge Log", classes="section-title")
-        yield Log(id="merge-log", highlight=True)
-        yield Static("", id="stats-panel")
+            yield Static("Merge Log", classes="section-title")
+            yield Log(id="merge-log", highlight=True)
+            yield Static("", id="stats-panel")
 
     def on_mount(self) -> None:
         pass  # start empty — user clicks Refresh after pulling

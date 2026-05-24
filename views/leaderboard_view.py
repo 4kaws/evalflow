@@ -14,6 +14,7 @@ from textual.widgets import Button, DataTable, Label, Select, Static
 
 from config import config
 from core.merger import discover_outputs
+from views.widgets import PageHeader
 
 
 class LeaderboardView(Vertical):
@@ -22,10 +23,12 @@ class LeaderboardView(Vertical):
     ]
 
     DEFAULT_CSS = """
-    LeaderboardView { padding: 1 2; height: 1fr; }
+    LeaderboardView { padding: 0; height: 1fr; }
+
+    #lb-body { padding: 1 3; height: 1fr; }
 
     .section-title {
-        color: $text-muted;
+        color: #86868B;
         text-style: bold;
         margin-top: 1;
         margin-bottom: 0;
@@ -37,13 +40,14 @@ class LeaderboardView(Vertical):
         align: left middle;
         margin-bottom: 0;
     }
-    #top-bar Label { width: 12; color: $text-muted; }
+    #top-bar Label { width: 12; color: #86868B; }
     #top-bar Select { width: 30; margin-right: 2; }
 
     #leaderboard-table {
         height: 1fr;
         min-height: 4;
         background: $surface;
+        border: round #E5E5E7;
         margin-top: 1;
     }
 
@@ -57,12 +61,14 @@ class LeaderboardView(Vertical):
     #task-breakdown {
         width: 1fr;
         background: $surface;
+        border: round #E5E5E7;
         margin-right: 1;
     }
 
     #question-diff {
         width: 1fr;
         background: $surface;
+        border: round #E5E5E7;
     }
 
     #diff-scroll { height: 1fr; padding: 0 1; }
@@ -80,26 +86,29 @@ class LeaderboardView(Vertical):
         self._tasks: list[str] = []
 
     def compose(self) -> ComposeResult:
-        yield Static("Model Leaderboard", classes="section-title")
+        yield PageHeader(
+            "Leaderboard",
+            "Cross-model accuracy ranking and per-question diff.",
+        )
+        with Vertical(id="lb-body"):
+            with Horizontal(id="top-bar"):
+                yield Label("Filter task:")
+                yield Select([("All tasks", "all")], value="all", id="task-filter")
+                yield Button("Refresh", id="refresh-lb-btn")
 
-        with Horizontal(id="top-bar"):
-            yield Label("Filter task:")
-            yield Select([("All tasks", "all")], value="all", id="task-filter")
-            yield Button("Refresh", id="refresh-lb-btn")
+            yield DataTable(id="leaderboard-table", cursor_type="row", zebra_stripes=True)
 
-        yield DataTable(id="leaderboard-table", cursor_type="row", zebra_stripes=True)
+            with Horizontal(id="split-layout"):
+                with Vertical(id="task-breakdown"):
+                    yield Static(" Per-Task Accuracy", classes="section-title")
+                    yield DataTable(id="task-table", cursor_type="row", zebra_stripes=True)
 
-        with Horizontal(id="split-layout"):
-            with Vertical(id="task-breakdown"):
-                yield Static(" Per-Task Accuracy", classes="section-title")
-                yield DataTable(id="task-table", cursor_type="row", zebra_stripes=True)
-
-            with Vertical(id="question-diff"):
-                yield Static(" Question-by-Question Diff", classes="section-title")
-                yield ScrollableContainer(
-                    Static("Select a model row above to see per-question comparison.", id="diff-content"),
-                    id="diff-scroll",
-                )
+                with Vertical(id="question-diff"):
+                    yield Static(" Question-by-Question Diff", classes="section-title")
+                    yield ScrollableContainer(
+                        Static("Select a model row above to see per-question comparison.", id="diff-content"),
+                        id="diff-scroll",
+                    )
 
     def on_mount(self) -> None:
         lb = self.query_one("#leaderboard-table", DataTable)
