@@ -275,10 +275,9 @@ class EvalflowApp(App):
     }
 
     #sidebar-nav {
-        height: 1fr;
+        height: auto;
         padding: 1 0;
         background: $panel;
-        overflow: hidden hidden;
     }
 
     #sidebar-spacer { height: 1fr; }
