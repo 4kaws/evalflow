@@ -351,7 +351,8 @@ class SetupWizard(App):
         for key, value in self._config.items():
             if value:
                 lines.append(f"{key}={value}")
-                display = "*" * 8 if "KEY" in key else value
+                _secret_key = any(s in key for s in ("KEY", "TOKEN", "PAT", "SECRET", "PASSWORD"))
+                display = "*" * 8 if _secret_key else value
                 summary.append(f"  ✅  {key} = {display}")
             else:
                 summary.append(f"  ⬜  {key} = (not set)")

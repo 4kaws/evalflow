@@ -9,9 +9,9 @@ Usage:
     python monitor.py username/benchmark-name      # run one specific watcher
 
 The cron entry installed by the TUI looks like:
-    MM HH * * * cd /home/junesdata/evalflow && \\
-        /home/junesdata/evalflow/evalflow-venv/bin/python monitor.py --all \\
-        >> /home/junesdata/evalflow/monitor.log 2>&1  # evalflow-monitor
+    MM HH * * * cd /path/to/evalflow && \\
+        /path/to/evalflow/venv/bin/python monitor.py --all \\
+        >> /path/to/evalflow/monitor.log 2>&1  # evalflow-monitor
 """
 
 import argparse
@@ -104,7 +104,7 @@ def pull_task(kag_client, username: str, api_key: str, task_slug: str, out_dir: 
             if page_token:
                 req.page_token = page_token
             resp = kag_client.kernels.kernels_api_client.list_kernel_session_output(req)
-            all_run_files += [f for f in (resp.files or []) if f.file_name.endswith(".run.json")]
+            all_run_files += [f for f in (resp.files or []) if Path(f.file_name).name.endswith(".run.json")]
             page_token = resp.next_page_token or ""
             if not page_token:
                 break
@@ -118,13 +118,13 @@ def pull_task(kag_client, username: str, api_key: str, task_slug: str, out_dir: 
 
     saved = []
     for fi in all_run_files:
-        dest = out_dir / fi.file_name
+        dest = out_dir / Path(fi.file_name).name
         try:
             r = requests.get(fi.url, auth=(username, api_key), timeout=60)
             r.raise_for_status()
             dest.write_bytes(r.content)
             saved.append(dest)
-            print(f"   + {fi.file_name}")
+            print(f"   + {Path(fi.file_name).name}")
         except Exception as exc:
             print(f"   [!] Download failed for {fi.file_name}: {exc}", file=sys.stderr)
     return saved

@@ -250,6 +250,11 @@ def merge_outputs(
     output_dir.mkdir(parents=True, exist_ok=True)
     sft_path  = output_dir / "evalflow_sft.csv"
     pref_path = output_dir / "evalflow_preferences.csv"
+    # Sanitize metadata columns against CSV/spreadsheet formula injection.
+    # Content columns (llm_response, question, chosen, rejected, etc.) are left
+    # unchanged — prefixing them would corrupt training data.
+    _sanitize_metadata(sft_df,  ["task_name", "task_description", "model_name", "judge_model"])
+    _sanitize_metadata(pref_df, ["task_name", "chosen_model", "rejected_model"])
     sft_df.to_csv(sft_path,  index=False)
     pref_df.to_csv(pref_path, index=False)
 
@@ -276,6 +281,20 @@ def merge_outputs(
     }
 
     return sft_df, pref_df, stats
+
+
+# ── CSV injection guard ─────────────────────────────────────────────────────
+
+_FORMULA_CHARS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _sanitize_metadata(df: pd.DataFrame, columns: list[str]) -> None:
+    """Prefix formula-starting chars in metadata columns to prevent spreadsheet injection."""
+    for col in columns:
+        if col in df.columns:
+            df[col] = df[col].apply(
+                lambda v: f"'{v}" if isinstance(v, str) and v.startswith(_FORMULA_CHARS) else v
+            )
 
 
 # ── Format A — SFT ──────────────────────────────────────────────────────────

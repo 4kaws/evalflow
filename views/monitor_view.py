@@ -653,7 +653,7 @@ class MonitorView(Vertical):
                     if page_token:
                         req.page_token = page_token
                     resp = kag_client.kernels.kernels_api_client.list_kernel_session_output(req)
-                    run_files  += [f for f in (resp.files or []) if f.file_name.endswith(".run.json")]
+                    run_files  += [f for f in (resp.files or []) if Path(f.file_name).name.endswith(".run.json")]
                     page_token  = resp.next_page_token or ""
                     if not page_token:
                         break
@@ -666,14 +666,14 @@ class MonitorView(Vertical):
                 continue
 
             for fi in run_files:
-                dest = out_dir / fi.file_name
+                dest = out_dir / Path(fi.file_name).name
                 try:
                     r = requests.get(fi.url, auth=(username, api_key), timeout=60)
                     r.raise_for_status()
                     dest.write_bytes(r.content)
                     all_downloaded.append(dest)
                     pulled_tasks.add(task_slug)
-                    write(f"   + {fi.file_name}")
+                    write(f"   + {Path(fi.file_name).name}")
                 except Exception as exc:
                     write(f"   [!] Download failed: {exc}")
 
