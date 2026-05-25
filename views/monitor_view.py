@@ -13,31 +13,11 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Checkbox, DataTable, Input, Label, Log, Select, Static
 
 from config import config
+from core.discovery import discover_tasks as _discover_tasks_api
+from core.merger import SFT_FILENAME, PREF_FILENAME, row_count as _row_count
+from core.uploader import DEFAULT_LICENSE
+from monitor import MANIFEST_FILE, load_manifest as _load_manifest, save_manifest as _save_manifest
 from views.widgets import PageHeader
-
-MANIFEST_FILE = Path(".evalflow_manifest.json")
-
-
-def _row_count(path: Path) -> str:
-    try:
-        with open(path, "rb") as f:
-            return str(sum(1 for _ in f) - 1)
-    except Exception:
-        return "?"
-
-
-def _load_manifest() -> dict:
-    try:
-        return json.loads(MANIFEST_FILE.read_text())
-    except Exception:
-        return {}
-
-
-def _save_manifest(manifest: dict) -> None:
-    try:
-        MANIFEST_FILE.write_text(json.dumps(manifest, indent=2))
-    except Exception:
-        pass
 
 
 _WORKDIR       = str(Path(__file__).parent.parent)
@@ -105,40 +85,6 @@ def _next_run_text(enabled: bool, hh: int, mm: int) -> str:
     hours, rem = divmod(int(delta.total_seconds()), 3600)
     mins = rem // 60
     return f"Next run: {next_run.strftime('%Y-%m-%d %H:%M')}  (in {hours}h {mins}m)"
-
-
-def _discover_tasks(kag_client, benchmark_slug: str, log=None) -> list[str]:
-    """
-    Return all task slugs inside a benchmark via the leaderboard API.
-    Falls back to treating the slug itself as a single task.
-    """
-    def write(msg):
-        if log:
-            log(msg)
-
-    username, slug_name = benchmark_slug.split("/", 1)
-
-    try:
-        from kagglesdk.benchmarks.types.benchmarks_api_service import ApiGetBenchmarkLeaderboardRequest
-        req = ApiGetBenchmarkLeaderboardRequest()
-        req.owner_slug     = username
-        req.benchmark_slug = slug_name
-        lb = kag_client.benchmarks.benchmarks_api_client.get_benchmark_leaderboard(req)
-        task_slugs: set[str] = set()
-        for row in (lb.rows or []):
-            for tr in (row.task_results or []):
-                if tr.benchmark_task_slug:
-                    short = tr.benchmark_task_slug.rstrip("/").split("/")[-1]
-                    task_slugs.add(short)
-        if task_slugs:
-            slugs = [f"{username}/{s}" for s in sorted(task_slugs)]
-            write(f"   Found {len(slugs)} task(s) via leaderboard API")
-            return slugs
-    except Exception as exc:
-        write(f"   (leaderboard API failed: {exc})")
-
-    write(f"   Treating '{benchmark_slug}' as a single task")
-    return [benchmark_slug]
 
 
 class MonitorView(Vertical):
@@ -643,7 +589,8 @@ class MonitorView(Vertical):
             write(f"[x] Auth failed: {exc}"); return
 
         # ── Discover current tasks ────────────────────────────────────
-        current_tasks: list[str] = _discover_tasks(kag_client, slug, log=write)
+        current_tasks: list[str] = _discover_tasks_api(kag_client, slug, log=write) or [slug]
+        write(f"   Found {len(current_tasks)} task(s)")
 
         entry     = self._manifest.get(slug, {"known_tasks": []})
         known     = set(entry.get("known_tasks", []))
@@ -766,8 +713,8 @@ class MonitorView(Vertical):
                 shutil.rmtree(staging)
             staging.mkdir(parents=True, exist_ok=True)
 
-            sft_src  = out_dir / "evalflow_sft.csv"
-            pref_src = out_dir / "evalflow_preferences.csv"
+            sft_src  = out_dir / SFT_FILENAME
+            pref_src = out_dir / PREF_FILENAME
             for src in [sft_src, pref_src,
                         sft_src.with_suffix(".parquet"),
                         pref_src.with_suffix(".parquet")]:
@@ -785,7 +732,7 @@ class MonitorView(Vertical):
             (staging / "dataset-metadata.json").write_text(json.dumps({
                 "title":    ds_title,
                 "id":       f"{username}/{ds_slug}",
-                "licenses": [{"name": "CC0-1.0"}],
+                "licenses": [{"name": DEFAULT_LICENSE}],
             }, indent=2))
 
             write(f"\n   Publishing {username}/{ds_slug} …")
@@ -835,10 +782,10 @@ class MonitorView(Vertical):
         if _cfg.kaggle_key:
             os.environ["KAGGLE_KEY"] = _cfg.kaggle_key
 
-        sft_src  = _cfg.output_dir / "evalflow_sft.csv"
-        pref_src = _cfg.output_dir / "evalflow_preferences.csv"
+        sft_src  = _cfg.output_dir / SFT_FILENAME
+        pref_src = _cfg.output_dir / PREF_FILENAME
         if not sft_src.exists():
-            write("[x] evalflow_sft.csv not found — run a check/pull first."); return
+            write(f"[x] {SFT_FILENAME} not found — run a check/pull first."); return
 
         from core.uploader import upload_dataset
         ds_slug  = entry["dataset_slug"]
@@ -863,7 +810,7 @@ class MonitorView(Vertical):
         (staging / "dataset-metadata.json").write_text(json.dumps({
             "title":    ds_title,
             "id":       f"{username}/{ds_slug}",
-            "licenses": [{"name": "CC0-1.0"}],
+            "licenses": [{"name": DEFAULT_LICENSE}],
         }, indent=2))
         write(f"\n>> Force-publishing {username}/{ds_slug} …")
         result = upload_dataset(folder=staging, is_update=True, append=True, log_cb=write)

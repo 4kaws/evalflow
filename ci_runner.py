@@ -142,7 +142,8 @@ def main() -> None:
             sys.exit(1)
 
         import json, os, shutil
-        from core.uploader import upload_dataset
+        from core.merger import SFT_FILENAME, PREF_FILENAME, row_count
+        from core.uploader import upload_dataset, DEFAULT_LICENSE
         from views.publish_view import build_dataset_card
 
         username = os.environ.get("KAGGLE_USERNAME", "")
@@ -151,25 +152,19 @@ def main() -> None:
             shutil.rmtree(staging)
         staging.mkdir(parents=True)
 
-        sft_path  = out_dir / "evalflow_sft.csv"
-        pref_path = out_dir / "evalflow_preferences.csv"
+        sft_path  = out_dir / SFT_FILENAME
+        pref_path = out_dir / PREF_FILENAME
         for f in [sft_path, pref_path,
                    sft_path.with_suffix(".parquet"),
                    pref_path.with_suffix(".parquet")]:
             if f.exists():
                 shutil.copy2(f, staging / f.name)
 
-        def _count(p: Path) -> str:
-            try:
-                return str(sum(1 for _ in open(p, "rb")) - 1)
-            except Exception:
-                return "?"
-
         readme = build_dataset_card(
             title=args.dataset_title,
             description=args.dataset_description,
-            sft_rows=_count(sft_path),
-            pref_pairs=_count(pref_path),
+            sft_rows=row_count(sft_path),
+            pref_pairs=row_count(pref_path),
             max_pairs_per_question=args.max_pairs,
         )
         (staging / "README.md").write_text(readme, encoding="utf-8")
@@ -177,7 +172,7 @@ def main() -> None:
         (staging / "dataset-metadata.json").write_text(json.dumps({
             "title":       args.dataset_title,
             "id":          f"{username}/{args.dataset_slug}",
-            "licenses":    [{"name": "CC0-1.0"}],
+            "licenses":    [{"name": DEFAULT_LICENSE}],
             "description": args.dataset_description,
         }, indent=2))
 

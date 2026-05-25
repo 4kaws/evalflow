@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,13 +12,7 @@ from typing import Callable, Optional
 import pandas as pd
 
 
-@dataclass
-class UploadConfig:
-    title: str
-    slug: str          # e.g. "my-benchmark-results"
-    description: str
-    license: str = "CC0-1.0"
-    public: bool = True
+DEFAULT_LICENSE = "CC0-1.0"
 
 
 @dataclass
@@ -27,39 +20,6 @@ class UploadResult:
     success: bool
     url: str = ""
     error: str = ""
-
-
-def prepare_dataset_folder(
-    merged_csv: Path,
-    config: UploadConfig,
-    username: str,
-    staging_dir: Path = Path("outputs/staging"),
-) -> Path:
-    """
-    Build the Kaggle-expected folder structure:
-        <staging_dir>/<slug>/
-            <data>.csv
-            dataset-metadata.json
-    """
-    folder = staging_dir / config.slug
-    if folder.exists():
-        shutil.rmtree(folder)
-    folder.mkdir(parents=True)
-
-    # Copy CSV
-    shutil.copy2(merged_csv, folder / merged_csv.name)
-
-    # Write metadata
-    metadata = {
-        "title": config.title,
-        "id": f"{username}/{config.slug}",
-        "licenses": [{"name": config.license}],
-        "description": config.description,
-    }
-    with open(folder / "dataset-metadata.json", "w") as f:
-        json.dump(metadata, f, indent=2)
-
-    return folder
 
 
 def fetch_and_append_existing(

@@ -11,7 +11,8 @@ from textual.widgets import Button, Checkbox, Input, Label, Log, Select, Static
 from textual import work
 
 from config import config
-from core.uploader import upload_dataset
+from core.merger import SFT_FILENAME, PREF_FILENAME, row_count
+from core.uploader import DEFAULT_LICENSE, upload_dataset
 from views.widgets import PageHeader
 
 _STATE_FILE = Path(".evalflow_publish_state.json")
@@ -308,7 +309,7 @@ class PublishView(Vertical):
                 yield Label("License:", classes="field-label")
                 yield Select(
                     _LICENSE_OPTS,
-                    value=self._state.get("license", "CC0-1.0"),
+                    value=self._state.get("license", DEFAULT_LICENSE),
                     id="license-select",
                     classes="field-input",
                 )
@@ -333,8 +334,8 @@ class PublishView(Vertical):
 
     def _files_text(self) -> str:
         if self._sft_path and self._pref_path:
-            sft_info  = f"({self._row_count(self._sft_path)} rows)"
-            pref_info = f"({self._row_count(self._pref_path)} pairs)"
+            sft_info  = f"({row_count(self._sft_path)} rows)"
+            pref_info = f"({row_count(self._pref_path)} pairs)"
             lines = [
                 "  Files to upload:",
                 f"  + evalflow_sft.csv             {sft_info}",
@@ -416,8 +417,8 @@ class PublishView(Vertical):
         self.query_one("#url-panel").update("")
         self.query_one("#open-dataset-btn", Button).disabled = True
 
-        sft_path  = self._sft_path  or config.output_dir / "evalflow_sft.csv"
-        pref_path = self._pref_path or config.output_dir / "evalflow_preferences.csv"
+        sft_path  = self._sft_path  or config.output_dir / SFT_FILENAME
+        pref_path = self._pref_path or config.output_dir / PREF_FILENAME
 
         missing = [str(p) for p in [sft_path, pref_path] if not p.exists()]
         if missing:
@@ -463,8 +464,8 @@ class PublishView(Vertical):
         readme = build_dataset_card(
             title=title,
             description=description,
-            sft_rows=self._row_count(sft_path),
-            pref_pairs=self._row_count(pref_path),
+            sft_rows=row_count(sft_path),
+            pref_pairs=row_count(pref_path),
         )
         (staging / "README.md").write_text(readme, encoding="utf-8")
 
@@ -478,8 +479,8 @@ class PublishView(Vertical):
             json.dump(metadata, f, indent=2)
 
         log.write_line(f">> Staging: {staging}")
-        log.write_line(f"   + {sft_path.name}   ({self._row_count(sft_path)} rows)")
-        log.write_line(f"   + {pref_path.name}   ({self._row_count(pref_path)} rows)")
+        log.write_line(f"   + {sft_path.name}   ({row_count(sft_path)} rows)")
+        log.write_line(f"   + {pref_path.name}   ({row_count(pref_path)} rows)")
         sft_parquet = sft_path.with_suffix(".parquet")
         if sft_parquet.exists():
             log.write_line(f"   + evalflow_sft.parquet + evalflow_preferences.parquet")
@@ -506,10 +507,3 @@ class PublishView(Vertical):
 
         self.app.call_from_thread(_apply)
 
-    @staticmethod
-    def _row_count(path: Path) -> str:
-        try:
-            with open(path, "rb") as f:
-                return str(sum(1 for _ in f) - 1)  # subtract header
-        except Exception:
-            return "?"

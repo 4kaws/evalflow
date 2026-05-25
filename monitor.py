@@ -206,14 +206,16 @@ def run_watcher(slug: str, entry: dict, out_dir: Path, force: bool = False) -> N
         if staging.exists():
             shutil.rmtree(staging)
         staging.mkdir(parents=True, exist_ok=True)
-        for csv_name in ("evalflow_sft.csv", "evalflow_preferences.csv"):
+        from core.merger import SFT_FILENAME, PREF_FILENAME
+        from core.uploader import DEFAULT_LICENSE
+        for csv_name in (SFT_FILENAME, PREF_FILENAME):
             src = out_dir / csv_name
             if src.exists():
                 shutil.copy2(src, staging / csv_name)
         (staging / "dataset-metadata.json").write_text(json.dumps({
             "title":    ds_title,
             "id":       f"{username}/{ds_slug}",
-            "licenses": [{"name": "CC0-1.0"}],
+            "licenses": [{"name": DEFAULT_LICENSE}],
         }, indent=2))
         print(f"\n   Publishing {username}/{ds_slug} …")
         result = upload_dataset(folder=staging, is_update=True, append=True, log_cb=print)

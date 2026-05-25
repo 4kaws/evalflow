@@ -27,6 +27,18 @@ from pathlib import Path
 import pandas as pd
 
 
+SFT_FILENAME  = "evalflow_sft.csv"
+PREF_FILENAME = "evalflow_preferences.csv"
+
+
+def row_count(path: Path) -> str:
+    try:
+        with open(path, "rb") as f:
+            return str(sum(1 for _ in f) - 1)
+    except Exception:
+        return "?"
+
+
 # ── Column definitions ──────────────────────────────────────────────────────
 
 SFT_COLUMNS = [
@@ -273,8 +285,8 @@ def merge_outputs(
     pref_df = _build_preferences(raw, max_pairs_per_question=max_pairs_per_question)
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    sft_path  = output_dir / "evalflow_sft.csv"
-    pref_path = output_dir / "evalflow_preferences.csv"
+    sft_path  = output_dir / SFT_FILENAME
+    pref_path = output_dir / PREF_FILENAME
     # Sanitize metadata columns against CSV/spreadsheet formula injection.
     # Content columns (llm_response, question, chosen, rejected, etc.) are left
     # unchanged — prefixing them would corrupt training data.
@@ -394,8 +406,8 @@ def _write_parquet(sft_df: pd.DataFrame, pref_df: pd.DataFrame, output_dir: Path
     """Write .parquet alongside .csv; returns True if successful."""
     try:
         import pyarrow  # noqa: F401
-        sft_df.to_parquet(output_dir / "evalflow_sft.parquet",          index=False)
-        pref_df.to_parquet(output_dir / "evalflow_preferences.parquet", index=False)
+        sft_df.to_parquet(output_dir / SFT_FILENAME.replace(".csv", ".parquet"),  index=False)
+        pref_df.to_parquet(output_dir / PREF_FILENAME.replace(".csv", ".parquet"), index=False)
         return True
     except ImportError:
         return False

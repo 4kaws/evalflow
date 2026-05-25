@@ -406,36 +406,15 @@ class PullView(Vertical):
     # ------------------------------------------------------------------ #
 
     def _discover_tasks(self, kag_client, benchmark_slug: str, log: Log) -> list[str]:
-        """
-        Find all tasks belonging to a benchmark via the leaderboard API.
-
-        Expects "username/benchmark-name". Returns benchmark task slugs in
-        "username/task-slug" form, suitable for the Benchmark Tasks API.
-        """
-        username, slug_name = benchmark_slug.split("/", 1)
+        """Find all tasks in a benchmark via the leaderboard API."""
+        from core.discovery import discover_tasks
         log.write_line(f">> Discovering tasks in: {benchmark_slug}\n")
-
-        try:
-            from kagglesdk.benchmarks.types.benchmarks_api_service import ApiGetBenchmarkLeaderboardRequest
-            req = ApiGetBenchmarkLeaderboardRequest()
-            req.owner_slug     = username
-            req.benchmark_slug = slug_name
-            lb = kag_client.benchmarks.benchmarks_api_client.get_benchmark_leaderboard(req)
-            task_slugs: set[str] = set()
-            for row in (lb.rows or []):
-                for tr in (row.task_results or []):
-                    if tr.benchmark_task_slug:
-                        short = tr.benchmark_task_slug.rstrip("/").split("/")[-1]
-                        task_slugs.add(short)
-            if task_slugs:
-                slugs = [f"{username}/{s}" for s in sorted(task_slugs)]
-                log.write_line(f"   Found {len(slugs)} task(s) via leaderboard API:\n")
-                for s in slugs:
-                    log.write_line(f"   - {s}")
-                return slugs
-        except Exception as exc:
-            log.write_line(f"   (leaderboard API failed: {exc})")
-
+        slugs = discover_tasks(kag_client, benchmark_slug, log=log.write_line)
+        if slugs:
+            log.write_line(f"   Found {len(slugs)} task(s) via leaderboard API:\n")
+            for s in slugs:
+                log.write_line(f"   - {s}")
+            return slugs
         log.write_line(
             f"\n[x] Could not discover tasks for '{benchmark_slug}'.\n\n"
             "   If this is a single task slug (not a benchmark), check\n"
