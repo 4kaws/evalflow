@@ -280,6 +280,7 @@ publish automatically, with no manual steps.
 - **Check Selected** — checks only the highlighted watcher
 - **Force Republish** — re-publishes the current merged outputs without waiting for new tasks
 - **Reset & Re-pull** — clears known tasks for the selected watcher and re-pulls everything
+- **View Dataset** — opens the published dataset on kaggle.com/datasets in your browser
 
 **Daily schedule:**
 - Set a time in `HH:MM` format and click **Save & Push**
@@ -362,6 +363,7 @@ evalflow/
 │   └── workflows/
 │       └── evalflow_ci.yml  ← Daily schedule + manual dispatch CI
 ├── core/
+│   ├── discovery.py         ← Shared benchmark task discovery via leaderboard API
 │   ├── merger.py            ← Builds evalflow_sft.csv + evalflow_preferences.csv
 │   └── uploader.py          ← Kaggle Datasets API wrapper (appends on update)
 └── views/
