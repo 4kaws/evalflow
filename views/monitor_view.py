@@ -602,11 +602,9 @@ class MonitorView(Vertical):
             write("[x] Credentials not configured.")
             return
 
-        if config.kaggle_username:
-            os.environ["KAGGLE_USERNAME"] = config.kaggle_username
-        if config.kaggle_key:
-            os.environ["KAGGLE_KEY"] = config.kaggle_key
-
+        # kagglesdk reads basic-auth credentials from ~/.kaggle/kaggle.json only.
+        # Ensure it exists before calling KaggleClient() so the right creds are used.
+        config.ensure_kaggle_json()
         try:
             kag_client = KaggleClient()
         except Exception as exc:

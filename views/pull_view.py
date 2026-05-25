@@ -302,10 +302,6 @@ class PullView(Vertical):
             from kagglesdk import KaggleClient
             from config import config
 
-            if config.kaggle_username and config.kaggle_key:
-                os.environ["KAGGLE_USERNAME"] = config.kaggle_username
-                os.environ["KAGGLE_KEY"]      = config.kaggle_key
-
             if not config.kaggle_username or not config.kaggle_key:
                 log.write_line(
                     "[x] Credentials not configured.\n\n"
@@ -316,9 +312,11 @@ class PullView(Vertical):
                 )
                 return
 
-            # Do NOT pass username/api_token — that enables Bearer auth which
-            # the Benchmark Tasks API rejects. KaggleClient() reads credentials
-            # from env vars / ~/.kaggle/kaggle.json and uses basic auth instead.
+            # kagglesdk reads basic-auth credentials from ~/.kaggle/kaggle.json only
+            # (not from KAGGLE_USERNAME/KAGGLE_KEY env vars). The Benchmark Tasks API
+            # rejects Bearer auth, so we must NOT pass api_token= here. Ensure the
+            # file exists first so KaggleClient() picks up the right credentials.
+            config.ensure_kaggle_json()
             kag_client = KaggleClient()
             log.write_line("[ok] Authenticated with Kaggle API\n")
         except ImportError:
