@@ -244,6 +244,7 @@ class MonitorView(Vertical):
                 with Horizontal(id="form-actions"):
                     yield Button("Save Watcher",    id="add-btn",       variant="primary")
                     yield Button("Force Republish", id="republish-btn", variant="default")
+                    yield Button("View Dataset",    id="view-ds-btn",   variant="default")
                     yield Button("New Watcher",     id="new-btn",       variant="default")
 
             with Vertical(id="monitor-right"):
@@ -424,6 +425,8 @@ class MonitorView(Vertical):
                 self._reset_and_repull(slug)
             else:
                 self.query_one("#monitor-log", Log).write_line("[x] Select a watcher row first.")
+        elif bid == "view-ds-btn":
+            self._open_dataset()
         elif bid == "new-btn":
             self._clear_form()
         elif bid == "save-schedule-btn":
@@ -446,6 +449,27 @@ class MonitorView(Vertical):
         self.query_one("#publish-check", Checkbox).value = True
         self.query_one("#edit-indicator", Static).update("New watcher")
         self.query_one("#slug-input", Input).focus()
+
+    def _open_dataset(self) -> None:
+        log = self.query_one("#monitor-log", Log)
+        ds_slug = self.query_one("#dataset-slug-input", Input).value.strip()
+        username = config.kaggle_username
+        if not ds_slug or not username:
+            log.write_line("[x] No dataset slug set — save a watcher with a dataset slug first.")
+            return
+        url = f"https://www.kaggle.com/datasets/{username}/{ds_slug}"
+        for cmd in (
+            ["/mnt/c/Windows/explorer.exe", url],
+            ["/mnt/c/Windows/System32/explorer.exe", url],
+            ["xdg-open", url],
+        ):
+            try:
+                import subprocess
+                subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return
+            except Exception:
+                continue
+        log.write_line(f">> {url}")
 
     def _copy_log(self) -> None:
         log = self.query_one("#monitor-log", Log)
