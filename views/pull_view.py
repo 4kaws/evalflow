@@ -98,7 +98,7 @@ class PullView(Vertical):
     #pull-body { padding: 1 3; height: 1fr; }
 
     .section-title {
-        color: #86868B;
+        color: #6E7681;
         text-style: bold;
         margin-top: 1;
         margin-bottom: 0;
@@ -112,14 +112,14 @@ class PullView(Vertical):
     .field-label {
         width: 20;
         height: 3;
-        color: #86868B;
+        color: #6E7681;
         content-align: right middle;
         padding-right: 2;
     }
     #history-display {
         height: 3;
         width: 48;
-        color: #86868B;
+        color: #6E7681;
         content-align: left middle;
         padding-left: 1;
     }
@@ -132,7 +132,7 @@ class PullView(Vertical):
         height: 1fr;
         min-height: 4;
         background: $surface;
-        border: round #E5E5E7;
+        border: round #21262D;
         margin-top: 1;
         padding: 0 1;
     }
@@ -141,18 +141,18 @@ class PullView(Vertical):
         height: 1fr;
         min-height: 4;
         background: $surface;
-        border: round #E5E5E7;
+        border: round #21262D;
         margin-top: 1;
     }
 
     #status-bar {
-        color: #86868B;
+        color: #6E7681;
         height: 1;
         margin-top: 0;
         padding: 0 1;
     }
 
-    #creds-note { color: #86868B; margin-bottom: 0; }
+    #creds-note { color: #6E7681; margin-bottom: 0; }
     """
 
     def __init__(self, **kwargs):

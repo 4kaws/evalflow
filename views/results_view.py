@@ -44,10 +44,10 @@ class ResultsView(Vertical):
 
     #results-body { padding: 1 3; height: 1fr; }
 
-    .section-title { color: #86868B; text-style: bold; margin-bottom: 0; margin-top: 1; }
+    .section-title { color: #6E7681; text-style: bold; margin-bottom: 0; margin-top: 1; }
 
     #filter-bar { height: 3; align: left middle; margin-bottom: 0; }
-    #filter-bar Label { width: 8; color: #86868B; }
+    #filter-bar Label { width: 8; color: #6E7681; }
     #filter-bar Select { width: 24; margin-right: 2; }
     #refresh-btn { margin-left: 1; }
 
@@ -56,11 +56,11 @@ class ResultsView(Vertical):
         min-height: 6;
         margin-top: 1;
         background: $surface;
-        border: round #E5E5E7;
+        border: round #21262D;
     }
 
     #stats-bar {
-        color: #86868B;
+        color: #6E7681;
         height: 1;
         margin-top: 0;
         padding: 0 1;
@@ -71,7 +71,7 @@ class ResultsView(Vertical):
         min-height: 6;
         margin-top: 1;
         background: $surface;
-        border: round #E5E5E7;
+        border: round #21262D;
         padding: 1 2;
     }
     """

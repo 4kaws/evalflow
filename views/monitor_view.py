@@ -210,24 +210,24 @@ class MonitorView(Vertical):
 
     #monitor-body { padding: 1 3; height: 1fr; overflow-y: auto; }
 
-    .section-title { color: #86868B; text-style: bold; margin-top: 1; margin-bottom: 0; }
-    .section-subtitle { color: #86868B; height: 1; margin-bottom: 1; padding: 0 1; }
+    .section-title { color: #6E7681; text-style: bold; margin-top: 1; margin-bottom: 0; }
+    .section-subtitle { color: #6E7681; height: 1; margin-bottom: 1; padding: 0 1; }
 
     #schedule-row { layout: horizontal; height: 3; align: left middle; margin-bottom: 0; }
     #time-input { width: 10; }
     #save-schedule-btn { margin-left: 1; }
-    #schedule-panel { height: 1; color: #86868B; padding: 0 1; }
+    #schedule-panel { height: 1; color: #6E7681; padding: 0 1; }
 
     #watcher-table {
         height: 6;
         min-height: 3;
         background: $surface;
-        border: round #E5E5E7;
+        border: round #21262D;
         margin-bottom: 0;
         margin-top: 1;
     }
 
-    #empty-hint { display: none; color: #86868B; padding: 1 2; height: 7; }
+    #empty-hint { display: none; color: #6E7681; padding: 1 2; height: 7; }
 
     #table-actions { layout: horizontal; height: 3; margin-top: 1; margin-bottom: 0; }
     #table-actions Button { margin-right: 1; }
@@ -236,7 +236,7 @@ class MonitorView(Vertical):
     #danger-actions Button { margin-right: 1; }
 
     #edit-indicator {
-        color: #86868B;
+        color: #6E7681;
         text-style: italic;
         margin-top: 1;
         padding: 0 1;
@@ -251,7 +251,7 @@ class MonitorView(Vertical):
     }
     .field-label {
         width: 20;
-        color: #86868B;
+        color: #6E7681;
         content-align: right middle;
         padding-right: 2;
     }
@@ -264,7 +264,7 @@ class MonitorView(Vertical):
         height: 1fr;
         min-height: 8;
         background: $surface;
-        border: round #E5E5E7;
+        border: round #21262D;
         margin-top: 1;
         padding: 0 1;
     }

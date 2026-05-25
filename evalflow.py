@@ -86,18 +86,18 @@ from views.results_view import ResultsView
 
 EVALFLOW_THEME = Theme(
     name="evalflow",
-    primary    = "#0071E3",
+    primary    = "#58A6FF",
     secondary  = "#7DC8E8",
-    accent     = "#0077ED",
-    foreground = "#1D1D1F",
-    background = "#F5F5F7",
-    surface    = "#FFFFFF",
-    panel      = "#FBFBFD",
-    boost      = "#F0F0F2",
-    success    = "#34C759",
-    warning    = "#FF9500",
-    error      = "#FF3B30",
-    dark       = False,
+    accent     = "#58A6FF",
+    foreground = "#E6EDF3",
+    background = "#0D1117",
+    surface    = "#161B22",
+    panel      = "#161B22",
+    boost      = "#21262D",
+    success    = "#3FB950",
+    warning    = "#D29922",
+    error      = "#F85149",
+    dark       = True,
 )
 
 # Half-block goose (4 rows, no inline markup — colour applied via CSS).
@@ -120,31 +120,32 @@ class NavItem(Static):
     NavItem {
         width: 100%;
         height: 3;
-        padding: 0 2;
+        padding: 0 1;
         background: transparent;
-        color: #86868B;
+        color: #6E7681;
         content-align: left middle;
         border-left: thick $panel;
     }
     NavItem:hover {
         background: $boost;
         color: $foreground;
-        border-left: thick #B0B0B8;
+        border-left: thick $panel;
     }
     NavItem.active {
-        background: $primary;
-        color: white;
-        text-style: bold;
+        background: transparent;
+        color: $foreground;
+        border-left: thick $primary;
     }
     NavItem.small {
         height: 2;
     }
     NavItem.danger {
-        color: #FF3B30;
+        color: #6E7681;
     }
     NavItem.danger:hover {
-        color: #FF3B30;
+        color: $error;
         background: $boost;
+        border-left: thick $panel;
     }
     """
 
@@ -179,15 +180,14 @@ class BrandHeader(Horizontal):
         height: 6;
         padding: 1 2;
         background: $panel;
-        border-bottom: hkey #E5E5E7;
+        border-bottom: hkey #21262D;
         align: left middle;
     }
     BrandHeader #brand-goose {
-        width: 7;
+        width: 6;
         height: 4;
         content-align: center middle;
-        background: #C9E7F4;
-        border: round #B8DCEF;
+        background: transparent;
         color: #7DC8E8;
     }
     BrandHeader #brand-name {
@@ -212,8 +212,8 @@ class StatusBar(Horizontal):
     StatusBar {
         height: 1;
         background: $panel;
-        border-top: hkey #E5E5E7;
-        color: #86868B;
+        border-top: hkey #21262D;
+        color: #6E7681;
     }
     StatusBar #sb-left {
         width: auto;
@@ -271,7 +271,7 @@ class EvalflowApp(App):
         width: 28;
         height: 100%;
         background: $panel;
-        border-right: hkey #E5E5E7;
+        border-right: hkey #21262D;
     }
 
     #sidebar-nav {
@@ -285,7 +285,7 @@ class EvalflowApp(App):
     #sidebar-foot {
         height: auto;
         padding: 1 0;
-        border-top: hkey #E5E5E7;
+        border-top: hkey #21262D;
         background: $panel;
     }
 
@@ -301,33 +301,33 @@ class EvalflowApp(App):
         background: $background;
     }
 
-    /* ── Global button defaults for light mode ──────────────── */
+    /* ── Global button defaults ─────────────────────────────── */
     Button {
-        border: round #E5E5E7;
+        border: round #21262D;
         background: $surface;
-        color: #1D1D1F;
+        color: #6E7681;
     }
     Button:hover {
         background: $boost;
-        border: round #C8C8CC;
-        color: #1D1D1F;
+        border: round $primary;
+        color: $primary;
     }
     Button:focus {
-        border: round $primary 60%;
-        color: #1D1D1F;
+        border: round $primary;
+        color: $primary;
     }
     Button.-primary {
-        background: $primary 15%;
+        background: $surface;
         color: $primary;
-        border: round $primary 40%;
+        border: round $primary;
     }
     Button.-primary:hover {
-        background: $primary 25%;
-        border: round $primary 60%;
+        background: $boost;
+        border: round $primary;
         color: $primary;
     }
     Button.-primary:focus {
-        border: round $primary 90%;
+        border: round $primary;
     }
     Button.-active {
         background: $boost;

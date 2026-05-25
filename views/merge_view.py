@@ -73,13 +73,13 @@ class MergeView(Vertical):
 
     #merge-body { padding: 1 3; height: 1fr; }
 
-    .section-title { color: #86868B; text-style: bold; margin-bottom: 0; margin-top: 1; }
+    .section-title { color: #6E7681; text-style: bold; margin-bottom: 0; margin-top: 1; }
 
     #file-list {
         height: 1fr;
         min-height: 4;
         background: $surface;
-        border: round #E5E5E7;
+        border: round #21262D;
         padding: 0 1;
         margin-bottom: 0;
         overflow-y: auto;
@@ -92,7 +92,7 @@ class MergeView(Vertical):
         height: 1fr;
         min-height: 4;
         background: $surface;
-        border: round #E5E5E7;
+        border: round #21262D;
         margin-top: 1;
         padding: 0 1;
     }
@@ -100,10 +100,10 @@ class MergeView(Vertical):
     #stats-panel {
         height: auto;
         background: $surface;
-        border: round #E5E5E7;
+        border: round #21262D;
         padding: 1 2;
         margin-top: 1;
-        color: #86868B;
+        color: #6E7681;
     }
     """
 

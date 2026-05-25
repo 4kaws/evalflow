@@ -16,18 +16,18 @@ from textual.widgets import Button, Input, Label, Static
 
 EVALFLOW_THEME = Theme(
     name="evalflow",
-    primary="#58a6ff",
-    secondary="#79c0ff",
-    warning="#d29922",
-    error="#f85149",
-    success="#3fb950",
-    accent="#1f6feb",
-    foreground="#e6edf3",
-    background="#0d1117",
-    surface="#161b22",
-    panel="#21262d",
-    boost="#30363d",
-    dark=True,
+    primary    = "#58A6FF",
+    secondary  = "#7DC8E8",
+    accent     = "#58A6FF",
+    foreground = "#E6EDF3",
+    background = "#0D1117",
+    surface    = "#161B22",
+    panel      = "#161B22",
+    boost      = "#21262D",
+    success    = "#3FB950",
+    warning    = "#D29922",
+    error      = "#F85149",
+    dark       = True,
 )
 
 _ASCII_LOGO = """\

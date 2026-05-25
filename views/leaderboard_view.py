@@ -28,7 +28,7 @@ class LeaderboardView(Vertical):
     #lb-body { padding: 1 3; height: 1fr; }
 
     .section-title {
-        color: #86868B;
+        color: #6E7681;
         text-style: bold;
         margin-top: 1;
         margin-bottom: 0;
@@ -40,14 +40,14 @@ class LeaderboardView(Vertical):
         align: left middle;
         margin-bottom: 0;
     }
-    #top-bar Label { width: 12; color: #86868B; }
+    #top-bar Label { width: 12; color: #6E7681; }
     #top-bar Select { width: 30; margin-right: 2; }
 
     #leaderboard-table {
         height: 1fr;
         min-height: 4;
         background: $surface;
-        border: round #E5E5E7;
+        border: round #21262D;
         margin-top: 1;
     }
 
@@ -61,14 +61,14 @@ class LeaderboardView(Vertical):
     #task-breakdown {
         width: 1fr;
         background: $surface;
-        border: round #E5E5E7;
+        border: round #21262D;
         margin-right: 1;
     }
 
     #question-diff {
         width: 1fr;
         background: $surface;
-        border: round #E5E5E7;
+        border: round #21262D;
     }
 
     #diff-scroll { height: 1fr; padding: 0 1; }
