@@ -503,23 +503,10 @@ class PullView(Vertical):
         except Exception as exc:
             exc_str = str(exc)
             if "403" in exc_str or "404" in exc_str:
-                from config import config as _cfg
-                owner_in_slug = task_slug.split("/")[0]
-                mismatch = (
-                    _cfg.kaggle_username
-                    and owner_in_slug.lower() != _cfg.kaggle_username.lower()
-                )
-                hint = (
-                    f"\n   Authenticated as: {_cfg.kaggle_username or '(unknown)'}"
-                    f"\n   Task owner in slug: {owner_in_slug}"
-                    + ("\n   [!] Username mismatch — the task owner does not match your credentials." if mismatch else "")
-                    + "\n\n   Possible causes:"
-                    + "\n   • The task hasn't had models run against it yet (no runs to download)"
-                    + "\n   • The task slug is wrong — use 'Browse My Tasks' to see your actual task slugs"
-                    + "\n   • The task is private and requires matching credentials"
-                )
-                log.write_line(f"   [x] {task_slug}: no access ({exc_str[:60]}){hint}")
-                return None
+                # Benchmark Tasks API requires task ownership. Fall back to the
+                # Kernels API, which works for any public task regardless of owner.
+                log.write_line(f"   (Benchmark Tasks API: {exc_str[:50]} — trying Kernels API…)")
+                return self._pull_one_task_kernels(kag_client, task_slug, out_dir, log)
             log.write_line(f"   [x] Failed to list runs for {task_slug}: {exc_str}")
             return []
 
@@ -554,6 +541,87 @@ class PullView(Vertical):
                     log.write_line(f"   + {name}")
             except Exception as exc:
                 log.write_line(f"   [!] Failed to download run {run_id}: {exc}")
+
+        return saved
+
+    def _pull_one_task_kernels(
+        self,
+        kag_client,
+        task_slug: str,
+        out_dir: Path,
+        log: Log,
+    ) -> list[Path] | None:
+        """Fallback: list .run.json outputs via the Kernels API and download directly.
+
+        Works for any public task regardless of ownership — used when the Benchmark
+        Tasks API returns 403/404 because the authenticated user is not the task owner.
+        Returns list[Path] on success (may be empty), None on 403/404.
+        """
+        import requests
+        from kagglesdk.kernels.types.kernels_api_service import ApiListKernelSessionOutputRequest
+        from config import config as _cfg
+
+        owner, kernel_slug = task_slug.split("/", 1)
+        all_run_files = []
+        page_token = ""
+
+        try:
+            while True:
+                req = ApiListKernelSessionOutputRequest()
+                req.user_name   = owner
+                req.kernel_slug = kernel_slug
+                req.page_size   = 100
+                if page_token:
+                    req.page_token = page_token
+                resp = self._api_call_with_retry(
+                    lambda r=req: kag_client.kernels.kernels_api_client.list_kernel_session_output(r),
+                    log, "list kernel outputs",
+                )
+                all_run_files += [
+                    f for f in (resp.files or [])
+                    if Path(f.file_name).name.endswith(".run.json")
+                ]
+                page_token = resp.next_page_token or ""
+                if not page_token:
+                    break
+        except Exception as exc:
+            exc_str = str(exc)
+            if "403" in exc_str or "404" in exc_str:
+                log.write_line(
+                    f"   [x] {task_slug}: not accessible via either API.\n"
+                    f"   Authenticated as: {_cfg.kaggle_username or '(unknown)'}\n"
+                    "   Possible causes:\n"
+                    "   • The task is private — only the owner can pull it\n"
+                    "   • The task slug is wrong — use 'Browse My Tasks' to check\n"
+                    "   • No model runs have completed yet"
+                )
+                return None
+            log.write_line(f"   [x] Kernels API failed for {task_slug}: {exc_str}")
+            return []
+
+        if not all_run_files:
+            log.write_line(f"   [!] No .run.json files found in kernel outputs for {task_slug}")
+            return []
+
+        log.write_line(f"   Found {len(all_run_files)} .run.json file(s) via Kernels API")
+        saved: list[Path] = []
+        for fi in all_run_files:
+            dest = out_dir / Path(fi.file_name).name
+            if dest.exists():
+                saved.append(dest)
+                continue
+            try:
+                r = requests.get(
+                    fi.url,
+                    auth=(_cfg.kaggle_username, _cfg.kaggle_key),
+                    timeout=60,
+                )
+                r.raise_for_status()
+                dest.write_bytes(r.content)
+                saved.append(dest)
+                log.write_line(f"   + {Path(fi.file_name).name}")
+            except Exception as exc:
+                log.write_line(f"   [!] Download failed for {fi.file_name}: {exc}")
 
         return saved
 
