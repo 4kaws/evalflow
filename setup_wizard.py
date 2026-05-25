@@ -7,7 +7,7 @@ then writes a .env file and re-launches the main app.
 import os
 from pathlib import Path
 
-from textual import on
+from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -345,6 +345,7 @@ class SetupWizard(App):
         self._step_index += 1
         if self._step_index == len(STEPS) - 1:
             self._write_env()
+            self._bootstrap_manifest_secret()
         self._update_step()
         self._focus_first_input()
 
@@ -414,19 +415,53 @@ class SetupWizard(App):
         has_key    = bool(self._config.get("KAGGLE_KEY"))
         has_github = bool(self._config.get("GITHUB_TOKEN")) and bool(self._config.get("GITHUB_REPO"))
         if username and has_key and has_github:
-            status = "Ready. GitHub sync enabled."
+            status = (
+                "Ready. GitHub sync enabled.\n\n"
+                "  Checking EVALFLOW_MANIFEST secret on GitHub..."
+            )
         elif username and has_key:
             status = "Ready. (GitHub sync not configured — 'Sync Watchers → Secret' won't work)"
         else:
             status = "Warning: Kaggle credentials incomplete — pull/publish may fail."
-        self.query_one("#done-summary").update(
+        self._done_summary_base = (
             f"Configuration saved to .env\n\n"
             + "\n".join(summary)
             + f"\n\n{status}\nPress Launch to open Evalflow."
         )
+        self.query_one("#done-summary").update(self._done_summary_base)
 
     def _launch_app(self) -> None:
         self.exit()
+
+    @work(thread=True)
+    def _bootstrap_manifest_secret(self) -> None:
+        """
+        Background thread: seeds EVALFLOW_MANIFEST on GitHub with '{}' if it does not
+        already exist. This runs automatically whenever the user completes the GitHub
+        credentials step, so the daily CI schedule works immediately without any manual
+        secret creation in GitHub Settings.
+
+        If the secret already exists (re-running the wizard, or created by a prior monitor
+        sync), it is left untouched. The result is appended to the done-screen summary.
+        """
+        token = self._config.get("GITHUB_TOKEN", "")
+        repo  = self._config.get("GITHUB_REPO", "")
+        if not token or not repo:
+            return
+        from core.github_secret import ensure_secret_seeded
+        result = ensure_secret_seeded(token, repo, "EVALFLOW_MANIFEST", b"{}")
+        self.call_from_thread(self._append_done_summary, result)
+
+    def _append_done_summary(self, line: str) -> None:
+        """Replaces the '...checking...' placeholder with the actual secret result."""
+        try:
+            base = self._done_summary_base.replace(
+                "  Checking EVALFLOW_MANIFEST secret on GitHub...", f"  {line}"
+            )
+            self._done_summary_base = base
+            self.query_one("#done-summary").update(base)
+        except Exception:
+            pass
 
 
 def should_run_wizard() -> bool:

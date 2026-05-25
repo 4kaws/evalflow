@@ -239,34 +239,16 @@ def run_watcher(slug: str, entry: dict, out_dir: Path, force: bool = False) -> N
 
 def _sync_manifest_to_github_secret(manifest: dict) -> None:
     """Push updated manifest back to EVALFLOW_MANIFEST secret so next run is up to date."""
-    import os, requests
-    from base64 import b64encode, b64decode
+    import os
 
     token = os.getenv("GITHUB_TOKEN", "")
     repo  = os.getenv("GITHUB_REPO", "")
     if not token or not repo:
         return  # running locally without GitHub config — skip silently
 
-    try:
-        headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github+json"}
-        r = requests.get(f"https://api.github.com/repos/{repo}/actions/secrets/public-key", headers=headers)
-        r.raise_for_status()
-        pk_data = r.json()
-
-        from nacl import encoding, public as nacl_public
-        pk  = nacl_public.PublicKey(b64decode(pk_data["key"]), encoding.RawEncoder)
-        box = nacl_public.SealedBox(pk)
-        encrypted = b64encode(box.encrypt(json.dumps(manifest, indent=2).encode())).decode()
-
-        r = requests.put(
-            f"https://api.github.com/repos/{repo}/actions/secrets/EVALFLOW_MANIFEST",
-            headers=headers,
-            json={"encrypted_value": encrypted, "key_id": pk_data["key_id"]},
-        )
-        r.raise_for_status()
-        print(f"   ✅ EVALFLOW_MANIFEST secret updated on GitHub.")
-    except Exception as exc:
-        print(f"   [!] Could not sync manifest to GitHub secret: {exc}", file=sys.stderr)
+    from core.github_secret import put_secret
+    result = put_secret(token, repo, "EVALFLOW_MANIFEST", json.dumps(manifest, indent=2).encode())
+    print(f"   {result}")
 
 
 # ── CLI entry point ───────────────────────────────────────────────────────────

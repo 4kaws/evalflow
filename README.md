@@ -178,6 +178,12 @@ The setup wizard launches automatically on first run and collects:
 - **GitHub token and repo** — needed for the daily cloud schedule to sync your watcher config
   Create a fine-grained PAT at **github.com → Settings → Developer settings → Fine-grained tokens** with **Secrets: read & write** permission on your repo
 
+When you complete the wizard with GitHub credentials, Evalflow automatically creates the
+`EVALFLOW_MANIFEST` Actions secret on your repo (seeded with `{}`) so the daily CI schedule
+works immediately — no manual secret creation required. If the secret already exists from a
+previous run, it is left untouched. The secret is then updated automatically after every
+monitor run to keep your watcher state in sync.
+
 You can also skip the wizard and create a `.env` file manually:
 
 ```env
@@ -350,7 +356,7 @@ Required GitHub Secrets:
 |--------|-------------|
 | `KAGGLE_USERNAME` | Your Kaggle username |
 | `KAGGLE_KEY` | Your Kaggle legacy API key |
-| `EVALFLOW_MANIFEST` | Watcher config JSON (auto-managed, create once with `{}`) |
+| `EVALFLOW_MANIFEST` | Watcher config JSON — created automatically by the setup wizard; updated after every monitor run. If not using the wizard, create it manually with value `{}`. |
 | `GH_PAT` | Fine-grained GitHub PAT with Secrets read/write permission |
 
 ---
@@ -385,6 +391,7 @@ evalflow/
 │       └── evalflow_ci.yml  ← Daily schedule + manual dispatch CI
 ├── core/
 │   ├── discovery.py         ← Shared benchmark task discovery via leaderboard API
+│   ├── github_secret.py     ← GitHub Actions secret encryption and upsert
 │   ├── merger.py            ← Builds evalflow_sft.csv + evalflow_preferences.csv
 │   └── uploader.py          ← Kaggle Datasets API wrapper (appends on update)
 └── views/
