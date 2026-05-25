@@ -235,8 +235,10 @@ class PullView(Vertical):
         elif bid == "open-btn":
             slug = self.query_one("#slug-input", Input).value.strip()
             if slug:
-                import webbrowser
-                webbrowser.open(f"https://www.kaggle.com/code/{slug}")
+                from views.widgets import open_url
+                url = f"https://www.kaggle.com/benchmarks/{slug}"
+                if not open_url(url):
+                    self.query_one("#pull-log", Log).write_line(f">> {url}")
         # Return focus to slug input and reset button highlight
         self._reset_btns()
         self.query_one("#slug-input", Input).focus()

@@ -8,6 +8,33 @@ from textual.message import Message
 from textual.widgets import Static
 
 
+def open_url(url: str) -> bool:
+    """Open *url* in the host browser, handling WSL (no xdg-settings device).
+
+    Tries Windows explorer.exe first (WSL), then xdg-open (native Linux/macOS).
+    Returns True if a command was launched, False if nothing worked (caller can
+    fall back to printing the URL).
+    """
+    import subprocess
+    for cmd in (
+        ["/mnt/c/Windows/explorer.exe", url],
+        ["/mnt/c/Windows/System32/explorer.exe", url],
+        ["xdg-open", url],
+        ["open", url],           # macOS
+    ):
+        try:
+            subprocess.Popen(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return True
+        except Exception:
+            continue
+    return False
+
+
 class PageHeader(Horizontal):
     """Title + subtitle on the left, optional meta text on the right."""
 

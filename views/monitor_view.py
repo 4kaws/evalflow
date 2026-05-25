@@ -458,18 +458,9 @@ class MonitorView(Vertical):
             log.write_line("[x] No dataset slug set — save a watcher with a dataset slug first.")
             return
         url = f"https://www.kaggle.com/datasets/{username}/{ds_slug}"
-        for cmd in (
-            ["/mnt/c/Windows/explorer.exe", url],
-            ["/mnt/c/Windows/System32/explorer.exe", url],
-            ["xdg-open", url],
-        ):
-            try:
-                import subprocess
-                subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                return
-            except Exception:
-                continue
-        log.write_line(f">> {url}")
+        from views.widgets import open_url
+        if not open_url(url):
+            log.write_line(f">> {url}")
 
     def _copy_log(self) -> None:
         log = self.query_one("#monitor-log", Log)
