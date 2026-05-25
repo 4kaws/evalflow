@@ -207,8 +207,12 @@ Evalflow is designed to be used entirely from the keyboard.
 | `↑` / `↓` | Move between fields on a page |
 | `←` / `→` | Cycle between action buttons |
 | `Enter` | Confirm / activate focused element |
-| `Ctrl+R` | Check all watchers (Monitor tab) |
 | `w` | Re-open setup wizard |
+| `Ctrl+R` | Refresh / check all watchers (context-sensitive) |
+| `Ctrl+A` | Select all files (Merge tab) |
+| `Ctrl+M` | Run merge (Merge tab) |
+| `Ctrl+U` | Publish new dataset (Publish tab) |
+| `Ctrl+E` | Update existing dataset (Publish tab) |
 
 ---
 
@@ -259,13 +263,12 @@ Questions where all models score identically are excluded — they carry no pref
 ## How Pull Works
 
 The Pull tab takes a single **benchmark slug** (`username/benchmark-name`) and discovers all
-task notebooks automatically using a 3-strategy fallback:
+task notebooks automatically via the **benchmark leaderboard API** — it extracts every task
+slug that has been evaluated and downloads all `.run.json` files in one pass.
 
-1. **Benchmark leaderboard API** — queries the Kaggle benchmark leaderboard to extract all
-   task slugs that have been run. Most reliable when models have already been evaluated.
-2. **Parent kernel lookup** — falls back to `kernels_list(parent=slug)` via the Kaggle SDK
-   to find notebooks grouped under the benchmark.
-3. **Single-task fallback** — if neither works, treats the slug itself as a single task.
+If the benchmark has no leaderboard yet (new benchmark, no models added yet, or wrong slug),
+the tab shows an explanatory hint. Check the **Single task** checkbox if you have a direct
+task slug rather than a benchmark slug and want to pull it without discovery.
 
 The `outputs/` directory is wiped clean on every TUI launch so you always start fresh.
 
