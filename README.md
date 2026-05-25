@@ -63,7 +63,13 @@ Kaggle (browser)                              Evalflow (terminal)
                                                  Re-publishing appends new data
                                                  and deduplicates automatically.
 
-                                            10. Monitor (optional)
+                                            10. Run (optional)
+                                                 Schedule your own model runs
+                                                 directly from the terminal —
+                                                 pick tasks and models, kick off
+                                                 a batch, and watch run status.
+
+                                            11. Monitor (optional)
                                                  Add watchers for your benchmarks.
                                                  Evalflow checks daily for new tasks,
                                                  pulls them automatically, and
@@ -194,7 +200,7 @@ Evalflow is designed to be used entirely from the keyboard.
 
 | Key | Action |
 |-----|--------|
-| `1` – `6` | Switch tabs |
+| `1` – `7` | Switch tabs |
 | `?` | Open / close help panel |
 | `q` | Quit |
 | `Esc` | Unfocus current field |
@@ -265,9 +271,21 @@ The `outputs/` directory is wiped clean on every TUI launch so you always start 
 
 ---
 
+## Run — Schedule Model Runs
+
+The Run tab (tab `6`) lets you kick off new benchmark runs directly from the terminal
+without touching the Kaggle UI.
+
+1. Select a benchmark task from the dropdown (populated from your owned tasks)
+2. Choose one or more models from the list
+3. Click **Schedule Runs** — Evalflow calls the Batch Schedule API and queues the jobs
+4. The status table updates as runs complete (`✓` done, `⟳` running, `…` queued, `✗` error)
+
+---
+
 ## Monitor — Automated Daily Updates
 
-The Monitor tab (tab `6`) watches your benchmarks for new tasks and handles pull + merge +
+The Monitor tab (tab `7`) watches your benchmarks for new tasks and handles pull + merge +
 publish automatically, with no manual steps.
 
 **Adding a watcher:**
@@ -372,6 +390,7 @@ evalflow/
     ├── leaderboard_view.py  ← Cross-model ranking + per-question diff
     ├── merge_view.py        ← Merge into SFT + preference formats
     ├── publish_view.py      ← Upload both CSVs to Kaggle Datasets
+    ├── run_view.py          ← Schedule model runs, poll status
     ├── monitor_view.py      ← Auto-watch benchmarks, manage schedule
     ├── help_view.py         ← In-app help panel
     └── widgets.py           ← Shared UI components
