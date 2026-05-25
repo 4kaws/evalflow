@@ -42,7 +42,7 @@ class LeaderboardView(Vertical):
         margin-bottom: 0;
     }
     #top-bar Label { width: 12; height: 3; color: #636E7B; content-align: left middle; }
-    #top-bar Select { width: 30; margin-right: 2; }
+    #top-bar Select { width: 1fr; max-width: 30; margin-right: 2; }
 
     #leaderboard-table {
         height: 1fr;

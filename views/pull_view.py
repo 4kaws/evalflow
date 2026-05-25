@@ -118,7 +118,7 @@ class PullView(Vertical):
     }
     #history-display {
         height: 3;
-        width: 48;
+        width: 1fr;
         color: #636E7B;
         content-align: left middle;
         padding-left: 1;

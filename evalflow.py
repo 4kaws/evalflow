@@ -73,6 +73,7 @@ headless / ci:
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.events import Resize
 from textual.theme import Theme
 from textual.widgets import ContentSwitcher, Static
 
@@ -339,6 +340,24 @@ class EvalflowApp(App):
     HelpView.visible {
         display: block;
     }
+
+    /* ── Responsive breakpoints ─────────────────────────────── */
+    /* narrow: < 110 cols — shrink sidebar, stack monitor panes  */
+    App.narrow #sidebar { width: 22; }
+    App.narrow #monitor-body { layout: vertical; }
+    App.narrow #monitor-left {
+        border-right: none;
+        border-bottom: hkey #D0D7DE;
+        height: auto;
+    }
+    App.narrow #monitor-right { height: 1fr; }
+    App.narrow .field-label { width: 14; }
+    App.narrow #tz-select { width: 1fr; max-width: 24; }
+
+    /* tiny: < 85 cols — compact sidebar, smaller labels         */
+    App.tiny #sidebar { width: 14; }
+    App.tiny .field-label { width: 10; padding-right: 1; }
+    App.tiny #help-box { width: 95%; }
     """
 
     BINDINGS = [
@@ -356,6 +375,11 @@ class EvalflowApp(App):
         Binding("down",   "focus_next",      "",            show=False),
         Binding("up",     "focus_previous",  "",            show=False),
     ]
+
+    def on_resize(self, event: Resize) -> None:
+        w = event.size.width
+        self.set_class(w < 110, "narrow")
+        self.set_class(w < 85,  "tiny")
 
     def on_mount(self) -> None:
         self.register_theme(EVALFLOW_THEME)

@@ -48,7 +48,7 @@ class ResultsView(Vertical):
 
     #filter-bar { height: 3; align: left middle; margin-bottom: 0; }
     #filter-bar Label { width: 8; height: 3; color: #636E7B; content-align: left middle; }
-    #filter-bar Select { width: 24; margin-right: 2; }
+    #filter-bar Select { width: 1fr; max-width: 24; margin-right: 2; }
     #refresh-btn { margin-left: 1; }
 
     #results-table {

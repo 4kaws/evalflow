@@ -70,7 +70,8 @@ class HelpView(Vertical):
     }
 
     #help-box {
-        width: 72;
+        width: 90%;
+        max-width: 72;
         height: 88%;
         background: $surface;
         border: round #D0D7DE;

@@ -213,7 +213,7 @@ class PublishView(Vertical):
     .section-title { color: #636E7B; text-style: bold; margin-top: 1; margin-bottom: 0; }
     .field-row { layout: horizontal; height: 3; align: left middle; margin-bottom: 0; }
     .field-label { width: 20; height: 3; color: #636E7B; content-align: right middle; padding-right: 2; }
-    .field-input { width: 52; }
+    .field-input { width: 1fr; }
     #btn-row { layout: horizontal; height: 3; margin-top: 1; }
     #btn-row Button { margin-right: 1; }
     #publish-log {
