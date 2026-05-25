@@ -86,22 +86,22 @@ from views.results_view import ResultsView
 
 EVALFLOW_THEME = Theme(
     name="evalflow",
-    primary    = "#58A6FF",
-    secondary  = "#7DC8E8",
-    accent     = "#58A6FF",
-    foreground = "#E6EDF3",
-    background = "#0D1117",
-    surface    = "#161B22",
-    panel      = "#161B22",
-    boost      = "#21262D",
-    success    = "#3FB950",
-    warning    = "#D29922",
-    error      = "#F85149",
-    dark       = True,
+    primary    = "#0969DA",
+    secondary  = "#0550AE",
+    accent     = "#0969DA",
+    foreground = "#1F2328",
+    background = "#F6F8FA",
+    surface    = "#FFFFFF",
+    panel      = "#FFFFFF",
+    boost      = "#F3F4F6",
+    success    = "#1A7F37",
+    warning    = "#9A6700",
+    error      = "#CF222E",
+    dark       = False,
 )
 
-# Half-block goose (4 rows, no inline markup — colour applied via CSS).
-GOOSE = " ▄██\n▄███\n████▀\n ▌ ▌"
+# Pixel-art goose: head top-left, diagonal neck, wide oval body, two feet.
+GOOSE = "     ▄▄▄\n  ▄▄██▀██\n    ▀▀██▀\n      ▀█▄\n        ▀█▄\n   ▄████████▄\n  ████████████\n   ▀▀█▀▀▀▀█▀▀"
 
 NAV_ITEMS = [
     ("pull",        "Pull",        "1", "download runs"),
@@ -120,32 +120,28 @@ class NavItem(Static):
     NavItem {
         width: 100%;
         height: 3;
-        padding: 0 1;
+        padding: 0 2;
         background: transparent;
-        color: #6E7681;
+        color: #636E7B;
         content-align: left middle;
-        border-left: thick $panel;
     }
     NavItem:hover {
         background: $boost;
         color: $foreground;
-        border-left: thick $panel;
     }
     NavItem.active {
-        background: transparent;
-        color: $foreground;
-        border-left: thick $primary;
+        background: $primary;
+        color: white;
     }
     NavItem.small {
         height: 2;
     }
     NavItem.danger {
-        color: #6E7681;
+        color: #636E7B;
     }
     NavItem.danger:hover {
         color: $error;
         background: $boost;
-        border-left: thick $panel;
     }
     """
 
@@ -177,22 +173,22 @@ class BrandHeader(Horizontal):
     DEFAULT_CSS = """
     BrandHeader {
         width: 100%;
-        height: 6;
+        height: 11;
         padding: 1 2;
         background: $panel;
-        border-bottom: hkey #21262D;
-        align: left middle;
+        border-bottom: hkey #D0D7DE;
+        align: left top;
     }
     BrandHeader #brand-goose {
-        width: 6;
-        height: 4;
-        content-align: center middle;
+        width: 15;
+        height: 8;
+        content-align: left top;
         background: transparent;
-        color: #7DC8E8;
+        color: #20BEFF;
     }
     BrandHeader #brand-name {
         width: 1fr;
-        height: 4;
+        height: 8;
         padding: 0 0 0 1;
         content-align: left middle;
     }
@@ -212,8 +208,8 @@ class StatusBar(Horizontal):
     StatusBar {
         height: 1;
         background: $panel;
-        border-top: hkey #21262D;
-        color: #6E7681;
+        border-top: hkey #D0D7DE;
+        color: #636E7B;
     }
     StatusBar #sb-left {
         width: auto;
@@ -268,10 +264,10 @@ class EvalflowApp(App):
 
     /* ── Sidebar ────────────────────────────────────────────── */
     #sidebar {
-        width: 28;
+        width: 32;
         height: 100%;
         background: $panel;
-        border-right: hkey #21262D;
+        border-right: hkey #D0D7DE;
     }
 
     #sidebar-nav {
@@ -285,7 +281,7 @@ class EvalflowApp(App):
     #sidebar-foot {
         height: auto;
         padding: 1 0;
-        border-top: hkey #21262D;
+        border-top: hkey #D0D7DE;
         background: $panel;
     }
 
@@ -303,9 +299,9 @@ class EvalflowApp(App):
 
     /* ── Global button defaults ─────────────────────────────── */
     Button {
-        border: round #21262D;
+        border: round #D0D7DE;
         background: $surface;
-        color: #6E7681;
+        color: #636E7B;
     }
     Button:hover {
         background: $boost;
@@ -317,14 +313,14 @@ class EvalflowApp(App):
         color: $primary;
     }
     Button.-primary {
-        background: $surface;
-        color: $primary;
+        background: $primary;
+        color: white;
         border: round $primary;
     }
     Button.-primary:hover {
-        background: $boost;
+        background: $primary;
         border: round $primary;
-        color: $primary;
+        color: white;
     }
     Button.-primary:focus {
         border: round $primary;

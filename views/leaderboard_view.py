@@ -6,6 +6,7 @@ Shows: accuracy per task, overall ranking, and a side-by-side per-question diff.
 from pathlib import Path
 
 import pandas as pd
+from rich.text import Text
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -28,7 +29,7 @@ class LeaderboardView(Vertical):
     #lb-body { padding: 1 3; height: 1fr; }
 
     .section-title {
-        color: #6E7681;
+        color: #636E7B;
         text-style: bold;
         margin-top: 1;
         margin-bottom: 0;
@@ -40,14 +41,14 @@ class LeaderboardView(Vertical):
         align: left middle;
         margin-bottom: 0;
     }
-    #top-bar Label { width: 12; color: #6E7681; }
+    #top-bar Label { width: 12; height: 3; color: #636E7B; content-align: left middle; }
     #top-bar Select { width: 30; margin-right: 2; }
 
     #leaderboard-table {
         height: 1fr;
         min-height: 4;
         background: $surface;
-        border: round #21262D;
+        border: round #D0D7DE;
         margin-top: 1;
     }
 
@@ -61,14 +62,14 @@ class LeaderboardView(Vertical):
     #task-breakdown {
         width: 1fr;
         background: $surface;
-        border: round #21262D;
+        border: round #D0D7DE;
         margin-right: 1;
     }
 
     #question-diff {
         width: 1fr;
         background: $surface;
-        border: round #21262D;
+        border: round #D0D7DE;
     }
 
     #diff-scroll { height: 1fr; padding: 0 1; }
@@ -184,7 +185,7 @@ class LeaderboardView(Vertical):
         for i, row in agg.iterrows():
             rank_emoji = f"  {i + 1}."
             bar_width = int(row["accuracy"] / 5)
-            bar = "█" * bar_width + "░" * (20 - bar_width)
+            bar = Text("█" * bar_width, style="#0969DA") + Text("░" * (20 - bar_width), style="#D0D7DE")
             lb_rows.append((
                 rank_emoji,
                 row["model_name"].split("/")[-1],

@@ -10,7 +10,7 @@ from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, Checkbox, DataTable, Input, Label, Log, Static
+from textual.widgets import Button, Checkbox, DataTable, Input, Label, Log, Select, Static
 
 from config import config
 from views.widgets import PageHeader
@@ -43,29 +43,48 @@ def _save_manifest(manifest: dict) -> None:
 _WORKDIR       = str(Path(__file__).parent.parent)
 _WORKFLOW_FILE = Path(__file__).parent.parent / ".github" / "workflows" / "evalflow_ci.yml"
 
-
 _WORKFLOW_TZ = "Europe/Bucharest"
 
+TIMEZONES: list[tuple[str, str]] = [
+    ("UTC",              "UTC"),
+    ("US / Eastern",     "America/New_York"),
+    ("US / Central",     "America/Chicago"),
+    ("US / Mountain",    "America/Denver"),
+    ("US / Pacific",     "America/Los_Angeles"),
+    ("Brazil / Brasília","America/Sao_Paulo"),
+    ("UK / London",      "Europe/London"),
+    ("Europe / Paris",   "Europe/Paris"),
+    ("Europe / Berlin",  "Europe/Berlin"),
+    ("Europe / Bucharest","Europe/Bucharest"),
+    ("Gulf / Dubai",     "Asia/Dubai"),
+    ("India / Kolkata",  "Asia/Kolkata"),
+    ("China / Shanghai", "Asia/Shanghai"),
+    ("Japan / Tokyo",    "Asia/Tokyo"),
+    ("Australia / Sydney","Australia/Sydney"),
+]
 
-def _get_schedule() -> tuple[bool, int, int]:
-    """Read schedule from GitHub Actions workflow. Returns (found, hh, mm)."""
+
+def _get_schedule() -> tuple[bool, int, int, str]:
+    """Read schedule from GitHub Actions workflow. Returns (found, hh, mm, tz)."""
     try:
         content = _WORKFLOW_FILE.read_text()
         m = _re.search(r'cron:\s*"(\d+)\s+(\d+)\s+\*\s+\*\s+\*"', content)
         if m:
             mm, hh = int(m.group(1)), int(m.group(2))
-            return True, hh, mm
+            tz_m = _re.search(r'timezone:\s*"([^"]+)"', content)
+            tz = tz_m.group(1) if tz_m else _WORKFLOW_TZ
+            return True, hh, mm, tz
     except Exception:
         pass
-    return False, 9, 22
+    return False, 9, 22, _WORKFLOW_TZ
 
 
-def _set_schedule_in_workflow(hh: int, mm: int) -> None:
+def _set_schedule_in_workflow(hh: int, mm: int, tz: str = _WORKFLOW_TZ) -> None:
     """Update the cron expression in the GitHub Actions workflow file."""
     content = _WORKFLOW_FILE.read_text()
     content = _re.sub(
         r'[ \t]*- cron: "[^"]*"[^\n]*\n([ \t]*timezone:[^\n]*)?\n?',
-        f'    - cron: "{mm} {hh} * * *"\n      timezone: "{_WORKFLOW_TZ}"\n',
+        f'    - cron: "{mm} {hh} * * *"\n      timezone: "{tz}"\n',
         content,
     )
     _WORKFLOW_FILE.write_text(content)
@@ -208,26 +227,43 @@ class MonitorView(Vertical):
     DEFAULT_CSS = """
     MonitorView { padding: 0; height: 1fr; }
 
-    #monitor-body { padding: 1 3; height: 1fr; overflow-y: auto; }
-
-    .section-title { color: #6E7681; text-style: bold; margin-top: 1; margin-bottom: 0; }
-    .section-subtitle { color: #6E7681; height: 1; margin-bottom: 1; padding: 0 1; }
-
+    #schedule-section { padding: 1 3 0 3; height: auto; }
     #schedule-row { layout: horizontal; height: 3; align: left middle; margin-bottom: 0; }
-    #time-input { width: 10; }
+    #sched-label { width: 13; height: 3; color: #636E7B; content-align: right middle; padding-right: 2; }
+    #time-input { width: 12; }
+    #tz-select { width: 32; margin-left: 1; }
     #save-schedule-btn { margin-left: 1; }
-    #schedule-panel { height: 1; color: #6E7681; padding: 0 1; }
+    #schedule-panel { height: 1; color: #636E7B; padding: 0 0 0 15; }
+
+    #monitor-body { height: 1fr; layout: horizontal; }
+
+    #monitor-left {
+        width: 1fr;
+        padding: 0 3 1 3;
+        overflow-y: auto;
+        height: 1fr;
+        border-right: hkey #D0D7DE;
+    }
+
+    #monitor-right {
+        width: 1fr;
+        padding: 1 3;
+        height: 1fr;
+    }
+
+    .section-title { color: #636E7B; text-style: bold; margin-top: 1; margin-bottom: 0; }
+    .section-subtitle { color: #636E7B; height: 1; margin-bottom: 1; padding: 0 1; }
 
     #watcher-table {
         height: 6;
         min-height: 3;
         background: $surface;
-        border: round #21262D;
+        border: round #D0D7DE;
         margin-bottom: 0;
         margin-top: 1;
     }
 
-    #empty-hint { display: none; color: #6E7681; padding: 1 2; height: 7; }
+    #empty-hint { display: none; color: #636E7B; padding: 1 2; height: 7; }
 
     #table-actions { layout: horizontal; height: 3; margin-top: 1; margin-bottom: 0; }
     #table-actions Button { margin-right: 1; }
@@ -236,7 +272,7 @@ class MonitorView(Vertical):
     #danger-actions Button { margin-right: 1; }
 
     #edit-indicator {
-        color: #6E7681;
+        color: #636E7B;
         text-style: italic;
         margin-top: 1;
         padding: 0 1;
@@ -251,20 +287,20 @@ class MonitorView(Vertical):
     }
     .field-label {
         width: 20;
-        color: #6E7681;
+        height: 3;
+        color: #636E7B;
         content-align: right middle;
         padding-right: 2;
     }
-    .field-input { width: 46; }
+    .field-input { width: 1fr; }
 
     #form-actions { layout: horizontal; height: 3; margin-top: 1; margin-bottom: 0; }
     #form-actions Button { margin-right: 1; }
 
     #monitor-log {
         height: 1fr;
-        min-height: 8;
         background: $surface;
-        border: round #21262D;
+        border: round #D0D7DE;
         margin-top: 1;
         padding: 0 1;
     }
@@ -275,68 +311,73 @@ class MonitorView(Vertical):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._manifest: dict = _load_manifest()
-        self._log_file_pos: int = 0   # byte offset — only new lines are appended
+        self._log_file_pos: int = 0
+        self._editing_slug: str | None = None  # None = new-watcher mode
 
     def compose(self) -> ComposeResult:
         yield PageHeader(
             "Monitor",
             "Watch benchmarks — pull, merge, publish on a daily schedule.",
         )
-        with Vertical(id="monitor-body"):
-            # Schedule at top so users see when the next CI run fires
+        # Schedule lives above the split so the Select dropdown isn't clipped
+        with Vertical(id="schedule-section"):
             with Horizontal(id="schedule-row"):
-                yield Label("Daily at:", classes="field-label")
+                yield Static("Daily at:", id="sched-label")
                 yield Input(placeholder="HH:MM", id="time-input")
-                yield Button("Save & Push", id="save-schedule-btn", variant="primary")
+                yield Select(TIMEZONES, value=_WORKFLOW_TZ, id="tz-select")
+                yield Button("Save", id="save-schedule-btn", variant="primary")
             yield Static("", id="schedule-panel")
 
-            yield DataTable(id="watcher-table", cursor_type="row", zebra_stripes=True)
-            yield Static(
-                "  No watchers yet. To get started:\n"
-                "    1. Fill in the form below — benchmark slug + dataset slug/title\n"
-                "    2. Click Save Watcher\n"
-                "    3. Set a daily time at the top and click Save & Push\n"
-                "       (this commits the schedule to your repo and pushes to GitHub Actions)\n"
-                "  Press ? to read what each button does.",
-                id="empty-hint",
-            )
+        with Horizontal(id="monitor-body"):
+            with Vertical(id="monitor-left"):
+                yield DataTable(id="watcher-table", cursor_type="row", zebra_stripes=True)
+                yield Static(
+                    "  No watchers yet. To get started:\n"
+                    "    1. Fill in the form below — benchmark slug + dataset slug/title\n"
+                    "    2. Click Save Watcher\n"
+                    "    3. Set a daily time at the top and click Save & Push\n"
+                    "       (this commits the schedule to your repo and pushes to GitHub Actions)\n"
+                    "  Press ? to read what each button does.",
+                    id="empty-hint",
+                )
 
-            # Routine actions
-            with Horizontal(id="table-actions"):
-                yield Button("Check All Now",  id="check-btn",     variant="primary")
-                yield Button("Check Selected", id="check-sel-btn", variant="default")
+                # Routine actions
+                with Horizontal(id="table-actions"):
+                    yield Button("Check All Now",  id="check-btn",     variant="primary")
+                    yield Button("Check Selected", id="check-sel-btn", variant="default")
 
-            # Destructive / advanced actions grouped separately
-            with Horizontal(id="danger-actions"):
-                yield Button("Remove Selected",        id="remove-btn",      variant="warning")
-                yield Button("Reset & Re-pull",        id="repull-btn",      variant="warning")
-                yield Button("Sync Watchers → Secret", id="sync-secret-btn", variant="default")
+                # Destructive / advanced actions grouped separately
+                with Horizontal(id="danger-actions"):
+                    yield Button("Remove Selected",        id="remove-btn",      variant="warning")
+                    yield Button("Reset & Re-pull",        id="repull-btn",      variant="warning")
+                    yield Button("Sync Watchers → Secret", id="sync-secret-btn", variant="default")
 
-            # Form — editing an existing watcher populates these fields
-            yield Static("New watcher", id="edit-indicator")
-            yield Static("Watcher Settings", classes="section-title")
+                # Form — editing an existing watcher populates these fields
+                yield Static("New watcher", id="edit-indicator")
+                yield Static("Watcher Settings", classes="section-title")
 
-            with Horizontal(classes="field-row"):
-                yield Label("Benchmark slug:", classes="field-label")
-                yield Input(placeholder="username/benchmark-name", id="slug-input", classes="field-input")
+                with Horizontal(classes="field-row"):
+                    yield Label("Benchmark slug:", classes="field-label")
+                    yield Input(placeholder="username/benchmark-name", id="slug-input", classes="field-input")
 
-            with Horizontal(classes="field-row"):
-                yield Label("Dataset slug:", classes="field-label")
-                yield Input(placeholder="my-benchmark-results", id="dataset-slug-input", classes="field-input")
+                with Horizontal(classes="field-row"):
+                    yield Label("Dataset slug:", classes="field-label")
+                    yield Input(placeholder="my-benchmark-results", id="dataset-slug-input", classes="field-input")
 
-            with Horizontal(classes="field-row"):
-                yield Label("Dataset title:", classes="field-label")
-                yield Input(placeholder="My Benchmark Results", id="dataset-title-input", classes="field-input")
+                with Horizontal(classes="field-row"):
+                    yield Label("Dataset title:", classes="field-label")
+                    yield Input(placeholder="My Benchmark Results", id="dataset-title-input", classes="field-input")
 
-            yield Checkbox("Auto-publish when new tasks found", value=True, id="publish-check")
+                yield Checkbox("Auto-publish when new tasks found", value=True, id="publish-check")
 
-            with Horizontal(id="form-actions"):
-                yield Button("Save Watcher",    id="add-btn",       variant="primary")
-                yield Button("Force Republish", id="republish-btn", variant="default")
-                yield Button("New Watcher",     id="new-btn",       variant="default")
+                with Horizontal(id="form-actions"):
+                    yield Button("Save Watcher",    id="add-btn",       variant="primary")
+                    yield Button("Force Republish", id="republish-btn", variant="default")
+                    yield Button("New Watcher",     id="new-btn",       variant="default")
 
-            yield Static("Activity Log", classes="section-title")
-            yield Log(id="monitor-log", highlight=True)
+            with Vertical(id="monitor-right"):
+                yield Static("Activity Log", classes="section-title")
+                yield Log(id="monitor-log", highlight=True)
 
     def on_mount(self) -> None:
         table = self.query_one("#watcher-table", DataTable)
@@ -351,31 +392,33 @@ class MonitorView(Vertical):
         self._load_log_file()
 
     def _load_schedule_ui(self) -> None:
-        found, hh, mm = _get_schedule()
+        found, hh, mm, tz = _get_schedule()
         self.query_one("#time-input", Input).value = f"{hh:02d}:{mm:02d}" if found else ""
+        self.query_one("#tz-select", Select).value = tz  # type: ignore[assignment]
         self.query_one("#schedule-panel").update(_next_run_text(found, hh, mm))
 
     def _save_schedule(self) -> None:
         log = self.query_one("#monitor-log", Log)
         time_str = self.query_one("#time-input", Input).value.strip()
+        tz = str(self.query_one("#tz-select", Select).value)
         try:
             hh, mm = [int(x) for x in time_str.split(":")]
             assert 0 <= hh <= 23 and 0 <= mm <= 59
         except Exception:
             log.write_line("[x] Invalid time — use HH:MM format (e.g. 14:00)")
             return
-        self._push_schedule(hh, mm)
+        self._push_schedule(hh, mm, tz)
 
     @work(thread=True)
-    def _push_schedule(self, hh: int, mm: int) -> None:
+    def _push_schedule(self, hh: int, mm: int, tz: str = _WORKFLOW_TZ) -> None:
         log = self.query_one("#monitor-log", Log)
 
         def write(msg: str) -> None:
             self.app.call_from_thread(log.write_line, msg)
 
         try:
-            _set_schedule_in_workflow(hh, mm)
-            write(f"\n>> Schedule set to {hh:02d}:{mm:02d} {_WORKFLOW_TZ} — pushing to GitHub …")
+            _set_schedule_in_workflow(hh, mm, tz)
+            write(f"\n>> Schedule set to {hh:02d}:{mm:02d} {tz} — pushing to GitHub …")
         except Exception as exc:
             write(f"[x] Could not update workflow file: {exc}")
             return
@@ -389,7 +432,7 @@ class MonitorView(Vertical):
             return
 
         r = subprocess.run(
-            ["git", "-C", _WORKDIR, "commit", "-m", f"chore: set monitor schedule to {hh:02d}:{mm:02d} {_WORKFLOW_TZ}"],
+            ["git", "-C", _WORKDIR, "commit", "-m", f"chore: set monitor schedule to {hh:02d}:{mm:02d} {tz}"],
             capture_output=True, text=True,
         )
         if r.returncode != 0:
@@ -461,12 +504,20 @@ class MonitorView(Vertical):
         slug = self._selected_slug()
         if not slug or slug not in self._manifest:
             return
+        self._editing_slug = slug
         entry = self._manifest[slug]
         self.query_one("#slug-input", Input).value = slug
         self.query_one("#dataset-slug-input", Input).value = entry.get("dataset_slug", "")
         self.query_one("#dataset-title-input", Input).value = entry.get("dataset_title", "")
         self.query_one("#publish-check", Checkbox).value = bool(entry.get("publish", True))
         self.query_one("#edit-indicator", Static).update(f"Editing: {slug}")
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "slug-input" and self._editing_slug is None:
+            slug = event.value.strip()
+            self.query_one("#edit-indicator", Static).update(
+                f"New: {slug}" if slug else "New watcher"
+            )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         bid = event.button.id
@@ -509,6 +560,7 @@ class MonitorView(Vertical):
     # ------------------------------------------------------------------ #
 
     def _clear_form(self) -> None:
+        self._editing_slug = None
         self.query_one("#slug-input",         Input).value = ""
         self.query_one("#dataset-slug-input",  Input).value = ""
         self.query_one("#dataset-title-input", Input).value = ""
@@ -551,6 +603,7 @@ class MonitorView(Vertical):
         _save_manifest(self._manifest)
         self._refresh_table()
 
+        self._editing_slug = None
         self.query_one("#slug-input",         Input).value = ""
         self.query_one("#dataset-slug-input",  Input).value = ""
         self.query_one("#dataset-title-input", Input).value = ""

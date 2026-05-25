@@ -16,18 +16,18 @@ from textual.widgets import Button, Input, Label, Static
 
 EVALFLOW_THEME = Theme(
     name="evalflow",
-    primary    = "#58A6FF",
-    secondary  = "#7DC8E8",
-    accent     = "#58A6FF",
-    foreground = "#E6EDF3",
-    background = "#0D1117",
-    surface    = "#161B22",
-    panel      = "#161B22",
-    boost      = "#21262D",
-    success    = "#3FB950",
-    warning    = "#D29922",
-    error      = "#F85149",
-    dark       = True,
+    primary    = "#0969DA",
+    secondary  = "#0550AE",
+    accent     = "#0969DA",
+    foreground = "#1F2328",
+    background = "#F6F8FA",
+    surface    = "#FFFFFF",
+    panel      = "#FFFFFF",
+    boost      = "#F3F4F6",
+    success    = "#1A7F37",
+    warning    = "#9A6700",
+    error      = "#CF222E",
+    dark       = False,
 )
 
 _ASCII_LOGO = """\
@@ -119,11 +119,17 @@ class SetupWizard(App):
     """
 
     BINDINGS = [
-        Binding("escape", "esc_key",   "Esc",   show=False),
-        Binding("enter",  "next_step", "Next →", show=True),
-        Binding("left",   "nav_left",  "←",     show=False),
-        Binding("right",  "nav_right", "→",     show=False),
+        Binding("escape", "esc_key",  "Esc", show=False),
+        Binding("enter",  "enter_key", "",   show=False),
+        Binding("left",   "nav_left",  "",   show=False),
+        Binding("right",  "nav_right", "",   show=False),
     ]
+
+    # Ordered input IDs for each step that has form fields
+    _STEP_INPUTS: dict[int, list[str]] = {
+        1: ["kaggle-username", "kaggle-key"],
+        2: ["github-token", "github-repo"],
+    }
 
     def __init__(self):
         super().__init__()
@@ -260,53 +266,89 @@ class SetupWizard(App):
         self.query_one("#next-btn", Button).label = "Launch Evalflow →" if is_last else "Next →"
         self.query_one("#back-btn", Button).set_class(self._step_index == 0, "hidden")
 
+    # ------------------------------------------------------------------ #
+    #  Button handlers — call _advance_step directly (no action dispatch)  #
+    # ------------------------------------------------------------------ #
+
     @on(Button.Pressed, "#next-btn")
     def on_next(self) -> None:
-        self.action_next_step()
+        self._advance_step()
 
     @on(Button.Pressed, "#back-btn")
     def on_back(self) -> None:
-        self.action_prev_step()
+        self._prev_step()
 
     @on(Button.Pressed, "#skip-btn")
     def on_skip(self) -> None:
-        self.action_skip_wizard()
+        self._launch_app()
+
+    # ------------------------------------------------------------------ #
+    #  Input Enter — cycle fields first, advance step on last field        #
+    # ------------------------------------------------------------------ #
 
     @on(Input.Submitted)
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        self.action_next_step()
-
-    def action_next_step(self) -> None:
-        if self._step_index == len(STEPS) - 1:
-            self._launch_app()
+        fields = self._STEP_INPUTS.get(self._step_index, [])
+        iid = event.input.id
+        if iid in fields:
+            idx = fields.index(iid)
+            if idx < len(fields) - 1:
+                self.query_one(f"#{fields[idx + 1]}", Input).focus()
+            else:
+                self.query_one("#next-btn", Button).focus()
             return
+        self._advance_step()
 
-        self._collect_step()
-        self._step_index += 1
+    # ------------------------------------------------------------------ #
+    #  Keyboard actions                                                     #
+    # ------------------------------------------------------------------ #
 
-        if self._step_index == len(STEPS) - 1:
-            self._write_env()
-
-        self._update_step()
-        # Focus first input in the new step (if any)
-        self._focus_first_input()
+    def action_enter_key(self) -> None:
+        """Enter: activate focused button, or advance step if no button focused."""
+        focused = self.focused
+        if isinstance(focused, Button):
+            focused.press()
+            return
+        self._advance_step()
 
     def action_nav_left(self) -> None:
-        if not isinstance(self.focused, Input):
-            self.action_focus_previous()
+        if isinstance(self.focused, Input):
+            return
+        btns = self._visible_btn_ids()
+        fid  = self.focused.id if self.focused else None
+        idx  = btns.index(fid) if fid in btns else 0
+        self.query_one(f"#{btns[(idx - 1) % len(btns)]}", Button).focus()
 
     def action_nav_right(self) -> None:
-        if not isinstance(self.focused, Input):
-            self.action_focus_next()
+        if isinstance(self.focused, Input):
+            return
+        btns = self._visible_btn_ids()
+        fid  = self.focused.id if self.focused else None
+        idx  = btns.index(fid) if fid in btns else -1
+        self.query_one(f"#{btns[(idx + 1) % len(btns)]}", Button).focus()
 
     def action_esc_key(self) -> None:
-        """Escape: unfocus an input so arrow keys work on buttons; skip only from welcome."""
         if isinstance(self.focused, Input):
             self.query_one("#next-btn", Button).focus()
         elif self._step_index == 0:
             self._launch_app()
 
-    def action_prev_step(self) -> None:
+    # ------------------------------------------------------------------ #
+    #  Step logic                                                           #
+    # ------------------------------------------------------------------ #
+
+    def _advance_step(self) -> None:
+        if self._step_index == len(STEPS) - 1:
+            self._launch_app()
+            return
+        self._collect_step()
+        self._step_index += 1
+        if self._step_index == len(STEPS) - 1:
+            self._write_env()
+        self._update_step()
+        self._focus_first_input()
+
+    def _prev_step(self) -> None:
         if self._step_index == 0:
             return
         self._step_index -= 1
@@ -315,6 +357,14 @@ class SetupWizard(App):
 
     def action_skip_wizard(self) -> None:
         self._launch_app()
+
+    def _visible_btn_ids(self) -> list[str]:
+        btns = []
+        if self._step_index > 0:
+            btns.append("back-btn")
+        btns.append("skip-btn")
+        btns.append("next-btn")
+        return btns
 
     def _focus_first_input(self) -> None:
         step_ids = ["step-welcome", "step-kaggle-api", "step-github", "step-done"]
@@ -353,9 +403,9 @@ class SetupWizard(App):
                 lines.append(f"{key}={value}")
                 _secret_key = any(s in key for s in ("KEY", "TOKEN", "PAT", "SECRET", "PASSWORD"))
                 display = "*" * 8 if _secret_key else value
-                summary.append(f"  ✅  {key} = {display}")
+                summary.append(f"  [+]   {key} = {display}")
             else:
-                summary.append(f"  ⬜  {key} = (not set)")
+                summary.append(f"  [!]   {key} = (not set)")
 
         ENV_FILE.write_text("\n".join(lines) + "\n")
 

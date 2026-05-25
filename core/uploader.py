@@ -127,7 +127,7 @@ def upload_dataset(
         from kaggle.api.kaggle_api_extended import KaggleApi
         api = KaggleApi()
         api.authenticate()
-        log("✅ Authenticated with Kaggle API")
+        log("[ok] Authenticated with Kaggle API")
     except ImportError:
         return UploadResult(
             success=False,
@@ -148,7 +148,7 @@ def upload_dataset(
             fetch_and_append_existing(api, owner, slug, folder, log)
 
         if is_update:
-            log("📤 Updating existing dataset…")
+            log(">> Updating existing dataset…")
             api.dataset_create_version(
                 folder=str(folder),
                 version_notes="Updated via Evalflow",
@@ -156,7 +156,7 @@ def upload_dataset(
                 delete_old_versions=False,
             )
         else:
-            log("📤 Creating new dataset…")
+            log(">> Creating new dataset…")
             api.dataset_create_new(
                 folder=str(folder),
                 convert_to_csv=False,
@@ -171,10 +171,10 @@ def upload_dataset(
         dataset_id = meta.get("id", "")
         url = f"https://www.kaggle.com/datasets/{dataset_id}" if dataset_id else "https://www.kaggle.com/datasets"
 
-        log(f"✅ Dataset published: {url}")
+        log(f"[ok] Dataset published: {url}")
         return UploadResult(success=True, url=url)
 
     except Exception as exc:  # noqa: BLE001
         error_msg = str(exc)
-        log(f"❌ Upload failed: {error_msg}")
+        log(f"[x] Upload failed: {error_msg}")
         return UploadResult(success=False, error=error_msg)

@@ -7,7 +7,7 @@ from textual.widgets import Button, Static
 
 def _group(title: str, rows: list[tuple[str, str]]) -> str:
     """Render a shortcut group as Rich markup."""
-    lines = [f"[bold #6E7681]{title}[/bold #6E7681]"]
+    lines = [f"[bold #636E7B]{title}[/bold #636E7B]"]
     for key, desc in rows:
         if key:
             lines.append(f"  [bold $primary]{key:<12}[/bold $primary] {desc}")
@@ -72,14 +72,14 @@ class HelpView(Vertical):
         width: 72;
         height: 88%;
         background: $surface;
-        border: round #21262D;
+        border: round #D0D7DE;
         padding: 0;
     }
 
     #help-header {
         height: 4;
         padding: 1 3;
-        border-bottom: hkey #21262D;
+        border-bottom: hkey #D0D7DE;
         align: left middle;
     }
 
@@ -92,7 +92,7 @@ class HelpView(Vertical):
 
     #help-subtitle {
         width: 1fr;
-        color: #6E7681;
+        color: #636E7B;
         content-align: left middle;
     }
 
@@ -105,14 +105,14 @@ class HelpView(Vertical):
         height: 3;
         align: right middle;
         padding: 0 2;
-        border-top: hkey #21262D;
+        border-top: hkey #D0D7DE;
     }
 
     #help-close-btn {
         width: 18;
-        border: round #21262D;
+        border: round #D0D7DE;
         background: $surface;
-        color: #6E7681;
+        color: #636E7B;
     }
 
     #help-close-btn:hover {

@@ -209,9 +209,9 @@ class PublishView(Vertical):
 
     #publish-body { padding: 1 3; height: 1fr; }
 
-    .section-title { color: #6E7681; text-style: bold; margin-top: 1; margin-bottom: 0; }
+    .section-title { color: #636E7B; text-style: bold; margin-top: 1; margin-bottom: 0; }
     .field-row { layout: horizontal; height: 3; align: left middle; margin-bottom: 0; }
-    .field-label { width: 20; color: #6E7681; content-align: right middle; padding-right: 2; }
+    .field-label { width: 20; height: 3; color: #636E7B; content-align: right middle; padding-right: 2; }
     .field-input { width: 52; }
     #btn-row { layout: horizontal; height: 3; margin-top: 1; }
     #btn-row Button { margin-right: 1; }
@@ -219,7 +219,7 @@ class PublishView(Vertical):
         height: 1fr;
         min-height: 4;
         background: $surface;
-        border: round #21262D;
+        border: round #D0D7DE;
         margin-top: 1;
         padding: 0 1;
     }
@@ -229,14 +229,14 @@ class PublishView(Vertical):
         height: 2;
         padding: 0 1;
     }
-    #creds-note { color: #6E7681; margin-bottom: 0; }
+    #creds-note { color: #636E7B; margin-bottom: 0; }
     #files-panel {
         height: 4;
         background: $surface;
-        border: round #21262D;
+        border: round #D0D7DE;
         padding: 1 2;
         margin-bottom: 0;
-        color: #6E7681;
+        color: #636E7B;
     }
     """
 

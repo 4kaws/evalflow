@@ -18,7 +18,7 @@ class PageHeader(Horizontal):
         min-height: 5;
         padding: 1 3;
         background: $surface;
-        border-bottom: hkey #21262D;
+        border-bottom: hkey #D0D7DE;
         align: left middle;
     }
     PageHeader #ph-text { width: 1fr; height: auto; }
@@ -26,12 +26,12 @@ class PageHeader(Horizontal):
         color: $foreground;
         text-style: bold;
     }
-    PageHeader #ph-subtitle { color: #6E7681; }
+    PageHeader #ph-subtitle { color: #636E7B; }
     PageHeader #ph-meta {
         width: auto;
         height: auto;
         content-align: right middle;
-        color: #6E7681;
+        color: #636E7B;
         padding: 0 0 0 2;
     }
     """
@@ -64,15 +64,15 @@ class Section(Vertical):
     Section .section-head {
         height: 2;
         align: left middle;
-        border-bottom: hkey #21262D;
+        border-bottom: hkey #D0D7DE;
     }
     Section .section-title {
-        color: #6E7681;
+        color: #636E7B;
         text-style: bold;
         width: auto;
     }
     Section .section-hint {
-        color: #6E7681;
+        color: #636E7B;
         width: auto;
         padding: 0 1;
     }
@@ -113,7 +113,7 @@ class Segmented(Horizontal):
         height: 3;
         width: auto;
         background: $boost;
-        border: round #21262D;
+        border: round #D0D7DE;
         padding: 0 1;
         align: left middle;
     }
@@ -122,7 +122,7 @@ class Segmented(Horizontal):
         height: 1;
         padding: 0 2;
         background: transparent;
-        color: #6E7681;
+        color: #636E7B;
         margin: 1 0;
         content-align: center middle;
     }
@@ -133,7 +133,7 @@ class Segmented(Horizontal):
         background: $surface;
         color: $primary;
         text-style: bold;
-        border: round #21262D;
+        border: round #D0D7DE;
     }
     """
 

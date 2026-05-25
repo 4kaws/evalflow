@@ -73,13 +73,13 @@ class MergeView(Vertical):
 
     #merge-body { padding: 1 3; height: 1fr; }
 
-    .section-title { color: #6E7681; text-style: bold; margin-bottom: 0; margin-top: 1; }
+    .section-title { color: #636E7B; text-style: bold; margin-bottom: 0; margin-top: 1; }
 
     #file-list {
         height: 1fr;
         min-height: 4;
         background: $surface;
-        border: round #21262D;
+        border: round #D0D7DE;
         padding: 0 1;
         margin-bottom: 0;
         overflow-y: auto;
@@ -92,7 +92,7 @@ class MergeView(Vertical):
         height: 1fr;
         min-height: 4;
         background: $surface;
-        border: round #21262D;
+        border: round #D0D7DE;
         margin-top: 1;
         padding: 0 1;
     }
@@ -100,10 +100,10 @@ class MergeView(Vertical):
     #stats-panel {
         height: auto;
         background: $surface;
-        border: round #21262D;
+        border: round #D0D7DE;
         padding: 1 2;
         margin-top: 1;
-        color: #6E7681;
+        color: #636E7B;
     }
     """
 
@@ -249,6 +249,7 @@ class MergeView(Vertical):
 
             log.write_line(f"\n>>  Saved to {config.output_dir}/")
             log.write_line("   Switch to Publish tab to upload both files to Kaggle Datasets.")
+            self.call_after_refresh(lambda: log.scroll_end(animate=False))
 
             # Summary panel
             pref_q = stats["pref_questions"]
@@ -274,3 +275,4 @@ class MergeView(Vertical):
 
         except Exception as exc:
             log.write_line(f"[x] Merge failed: {exc}")
+            self.call_after_refresh(lambda: log.scroll_end(animate=False))

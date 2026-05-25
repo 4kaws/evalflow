@@ -44,10 +44,10 @@ class ResultsView(Vertical):
 
     #results-body { padding: 1 3; height: 1fr; }
 
-    .section-title { color: #6E7681; text-style: bold; margin-bottom: 0; margin-top: 1; }
+    .section-title { color: #636E7B; text-style: bold; margin-bottom: 0; margin-top: 1; }
 
     #filter-bar { height: 3; align: left middle; margin-bottom: 0; }
-    #filter-bar Label { width: 8; color: #6E7681; }
+    #filter-bar Label { width: 8; height: 3; color: #636E7B; content-align: left middle; }
     #filter-bar Select { width: 24; margin-right: 2; }
     #refresh-btn { margin-left: 1; }
 
@@ -56,11 +56,11 @@ class ResultsView(Vertical):
         min-height: 6;
         margin-top: 1;
         background: $surface;
-        border: round #21262D;
+        border: round #D0D7DE;
     }
 
     #stats-bar {
-        color: #6E7681;
+        color: #636E7B;
         height: 1;
         margin-top: 0;
         padding: 0 1;
@@ -71,7 +71,7 @@ class ResultsView(Vertical):
         min-height: 6;
         margin-top: 1;
         background: $surface;
-        border: round #21262D;
+        border: round #D0D7DE;
         padding: 1 2;
     }
     """
@@ -115,6 +115,11 @@ class ResultsView(Vertical):
     def on_activate(self) -> None:
         if self._df.empty:
             self._load_all_outputs()
+        else:
+            self.query_one("#task-filter",  Select).value = "all"  # type: ignore[assignment]
+            self.query_one("#model-filter", Select).value = "all"  # type: ignore[assignment]
+            self.query_one("#score-filter", Select).value = "all"  # type: ignore[assignment]
+            self._apply_filters(auto_select=True)
         self.query_one("#task-filter", Select).focus()
 
     # ------------------------------------------------------------------ #

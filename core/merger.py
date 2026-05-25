@@ -97,34 +97,40 @@ def parse_run_json(path: Path) -> tuple[dict | None, str]:
     model_slug = data.get("modelVersion", {}).get("slug", "")
     end_time   = data.get("endTime", datetime.now().isoformat())
 
-    # ── Find main task conversation (not the judge assessment) ────────────
+    # ── Find task conversations (skip metadata-only entries and judge) ────
     conversations = data.get("conversations", [])
-    main_conv = next(
-        (c for c in conversations if "Response assessment" not in c.get("id", "")),
-        conversations[0] if conversations else None,
-    )
-    if not main_conv:
-        return None, "No conversations found"
+    task_convs = [
+        c for c in conversations
+        if c.get("requests")
+        and "Response assessment" not in c.get("id", "")
+        and "judge" not in c.get("id", "").lower()
+    ]
+    if not task_convs:
+        return None, "No task conversations with requests found"
 
-    # Walk all requests — handles multi-turn tasks correctly
-    question     = ""
-    llm_response = ""
+    # Walk ALL task turns — multi-agent tasks have one conv per turn (t1, t2…).
+    # question  = first CONTENT_ROLE_USER across all turns
+    # llm_response = last CONTENT_ROLE_ASSISTANT (final turn's output)
+    question        = ""
+    llm_response    = ""
     prompt_template = ""
-    raw_messages = []
+    raw_messages    = []
 
-    for req in main_conv.get("requests", []):
-        for content in req.get("contents", []):
-            role  = content.get("role", "")
-            parts = content.get("parts", [])
-            text  = parts[0].get("text", "") if parts else ""
-            if role == "CONTENT_ROLE_SYSTEM" and not prompt_template:
-                prompt_template = text
-            elif role == "CONTENT_ROLE_USER" and not question:
-                question = text
-                raw_messages.append({"role": "user", "content": text})
-            elif role == "CONTENT_ROLE_ASSISTANT" and not llm_response:
-                llm_response = text
-                raw_messages.append({"role": "assistant", "content": text})
+    for conv in task_convs:
+        for req in conv.get("requests", []):
+            for content in req.get("contents", []):
+                role  = content.get("role", "")
+                parts = content.get("parts", [])
+                text  = parts[0].get("text", "") if parts else ""
+                if role == "CONTENT_ROLE_SYSTEM" and not prompt_template:
+                    prompt_template = text
+                elif role == "CONTENT_ROLE_USER":
+                    if not question:
+                        question = text
+                    raw_messages.append({"role": "user", "content": text})
+                elif role == "CONTENT_ROLE_ASSISTANT":
+                    llm_response = text          # keep updating → last turn wins
+                    raw_messages.append({"role": "assistant", "content": text})
 
     if not prompt_template:
         prompt_template = question  # bare prompt — the question is the full template
@@ -166,7 +172,9 @@ def parse_run_json(path: Path) -> tuple[dict | None, str]:
 
     # ── Judge model ───────────────────────────────────────────────────────
     judge_conv = next(
-        (c for c in conversations if "Response assessment" in c.get("id", "")),
+        (c for c in conversations
+         if "Response assessment" in c.get("id", "")
+         or "judge" in c.get("id", "").lower()),
         None,
     )
     judge_model = ""
@@ -175,8 +183,9 @@ def parse_run_json(path: Path) -> tuple[dict | None, str]:
             if content.get("role") == "CONTENT_ROLE_ASSISTANT":
                 judge_model = content.get("senderName", "")
 
-    # ── Token metrics ─────────────────────────────────────────────────────
-    metrics = main_conv.get("metrics", {})
+    # ── Token metrics — prefer root conv[0] aggregate, fall back to first task conv ──
+    root_conv = next((c for c in conversations if not c.get("requests")), None)
+    metrics = (root_conv or task_convs[0]).get("metrics", {})
 
     return {
         "task_name":        task_name,
