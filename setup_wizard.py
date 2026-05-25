@@ -400,6 +400,7 @@ class SetupWizard(App):
         summary = []
         for key, value in self._config.items():
             if value:
+                value = value.replace("\r", "").replace("\n", "")
                 lines.append(f"{key}={value}")
                 _secret_key = any(s in key for s in ("KEY", "TOKEN", "PAT", "SECRET", "PASSWORD"))
                 display = "*" * 8 if _secret_key else value

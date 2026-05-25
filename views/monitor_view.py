@@ -81,6 +81,9 @@ def _get_schedule() -> tuple[bool, int, int, str]:
 
 def _set_schedule_in_workflow(hh: int, mm: int, tz: str = _WORKFLOW_TZ) -> None:
     """Update the cron expression in the GitHub Actions workflow file."""
+    _valid_tzs = {v for _, v in TIMEZONES}
+    if tz not in _valid_tzs:
+        raise ValueError(f"Unknown timezone: {tz!r}")
     content = _WORKFLOW_FILE.read_text()
     content = _re.sub(
         r'[ \t]*- cron: "[^"]*"[^\n]*\n([ \t]*timezone:[^\n]*)?\n?',
@@ -358,15 +361,20 @@ class MonitorView(Vertical):
             capture_output=True, text=True,
         )
         if r.returncode != 0:
-            if "nothing to commit" in r.stdout + r.stderr:
+            combined = (r.stdout + r.stderr).lower()
+            no_change = ("nothing to commit" in combined
+                         or "nothing added to commit" in combined
+                         or "no changes added to commit" in combined)
+            if no_change:
                 write("   (schedule unchanged — nothing to push)")
             else:
-                write(f"[x] git commit failed: {r.stderr.strip()}")
+                detail = (r.stderr.strip() or r.stdout.strip() or "no output from git")
+                write(f"[x] git commit failed: {detail}")
             return
 
         try:
             r = subprocess.run(
-                ["git", "-C", _WORKDIR, "push"],
+                ["git", "-C", _WORKDIR, "push", "--set-upstream", "origin", "main"],
                 capture_output=True, text=True, timeout=30,
             )
         except subprocess.TimeoutExpired:
@@ -716,13 +724,12 @@ class MonitorView(Vertical):
                     for name in zf.namelist():
                         if not name.endswith(".run.json"):
                             continue
-                        dest = out_dir / name
-                        if dest.exists():
-                            all_downloaded.append(dest)
-                            continue
-                        dest.write_bytes(zf.read(name))
+                        dest = out_dir / Path(name).name
                         all_downloaded.append(dest)
                         pulled_tasks.add(task_slug)
+                        if dest.exists():
+                            continue
+                        dest.write_bytes(zf.read(name))
                         write(f"   + {name}")
                 except Exception as exc:
                     write(f"   [!] Download run {run_id} failed: {exc}")

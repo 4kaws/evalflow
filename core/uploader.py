@@ -100,7 +100,7 @@ def fetch_and_append_existing(
                 dedup_cols = (
                     ["task_name", "model_name", "question", "llm_response"]
                     if fname == "evalflow_sft.csv"
-                    else ["task_name", "question", "chosen_model", "rejected_model"]
+                    else ["task_name", "prompt", "chosen_model", "rejected_model"]
                 )
                 existing_dedup = [c for c in dedup_cols if c in combined.columns]
                 if existing_dedup:
