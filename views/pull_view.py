@@ -437,9 +437,11 @@ class PullView(Vertical):
             log.write_line(f"   (leaderboard API failed: {exc})")
 
         log.write_line(
-            f"\n[x] Could not discover tasks for '{benchmark_slug}'.\n"
-            "   The benchmark may not have a leaderboard yet, or the slug is wrong.\n"
-            "   Format: username/benchmark-name  (from kaggle.com/benchmarks/username/benchmark-name)"
+            f"\n[x] Could not discover tasks for '{benchmark_slug}'.\n\n"
+            "   If this is a single task slug (not a benchmark), check\n"
+            "   the 'Single task' checkbox and pull again.\n\n"
+            "   Otherwise the benchmark may not have a leaderboard yet, or the slug is wrong.\n"
+            "   Benchmark format: username/benchmark-name  (from kaggle.com/benchmarks/username/benchmark-name)"
         )
         return []
 
