@@ -275,25 +275,27 @@ class PullView(Vertical):
             )
             return
         import re as _re
-        # Split into at most 3 parts — Kaggle task URLs are owner/task-name/version
-        parts = [p for p in slug.split("/") if p]
+        # Accept owner/task-slug  or  owner/task-slug/version
+        parts = [p.strip() for p in slug.split("/") if p.strip()]
         if len(parts) < 2:
             log.write_line("[x] Slug must include owner and task name: owner/task-name")
             return
-        user = parts[0].strip().lower()
-        # Normalise the task segment only; drop trailing version number if present
-        task_part = parts[1]
-        task_part = _re.sub(r"[^\w\s-]", "", task_part).strip().lower()
+        user      = parts[0].lower()
+        task_part = _re.sub(r"[^\w\s-]", "", parts[1]).strip().lower()
         task_part = _re.sub(r"[\s_]+", "-", task_part)
+        # Third part, if present, is the version number
+        version: int | None = None
+        if len(parts) >= 3 and parts[2].isdigit():
+            version = int(parts[2])
         slug = f"{user}/{task_part}"
-        self._run_pull(slug, out_dir, download, auto_merge, single_task)
+        self._run_pull(slug, out_dir, download, auto_merge, single_task, version=version)
 
     # ------------------------------------------------------------------ #
     #  Core pull logic (runs in background thread)                        #
     # ------------------------------------------------------------------ #
 
     @work(thread=True)
-    def _run_pull(self, slug: str, out_dir: Path, download: bool, auto_merge: bool, single_task: bool = False) -> None:
+    def _run_pull(self, slug: str, out_dir: Path, download: bool, auto_merge: bool, single_task: bool = False, version: int | None = None) -> None:
         log = self.query_one("#pull-log", Log)
 
         # Authenticate
@@ -331,7 +333,8 @@ class PullView(Vertical):
 
         # Discover tasks — either via leaderboard API or treat slug as a single task
         if single_task:
-            log.write_line(f">> Single-task mode: treating '{slug}' as a direct task slug.\n")
+            version_hint = f"  (version {version})" if version else ""
+            log.write_line(f">> Single-task mode: treating '{slug}'{version_hint} as a direct task slug.\n")
             task_slugs = [slug]
         else:
             task_slugs = self._discover_tasks(kag_client, slug, log)
@@ -352,7 +355,7 @@ class PullView(Vertical):
             if i > 1:
                 _time.sleep(0.5)   # avoid 429 rate limit between tasks
             log.write_line(f"\n[{i}/{len(task_slugs)}] Pulling: {task_slug}")
-            run_files = self._pull_one_task(kag_client, task_slug, out_dir, log)
+            run_files = self._pull_one_task(kag_client, task_slug, out_dir, log, version=version)
             if run_files:
                 all_downloaded.extend((task_slug, p) for p in run_files)
             elif run_files is None:
@@ -446,6 +449,7 @@ class PullView(Vertical):
         task_slug: str,
         out_dir: Path,
         log: Log,
+        version: int | None = None,
     ) -> list[Path] | None:
         """Download .run.json outputs for a benchmark task via the Benchmark Tasks API.
 
@@ -475,6 +479,8 @@ class PullView(Vertical):
                 slug_obj = ApiBenchmarkTaskSlug()
                 slug_obj.owner_slug = owner
                 slug_obj.task_slug  = slug_name
+                if version is not None:
+                    slug_obj.version_number = version
                 req.task_slug  = slug_obj
                 req.page_size  = 100
                 if page_token:
@@ -492,7 +498,22 @@ class PullView(Vertical):
         except Exception as exc:
             exc_str = str(exc)
             if "403" in exc_str or "404" in exc_str:
-                log.write_line(f"   [x] {task_slug}: no access ({exc_str[:80]})")
+                from config import config as _cfg
+                owner_in_slug = task_slug.split("/")[0]
+                mismatch = (
+                    _cfg.kaggle_username
+                    and owner_in_slug.lower() != _cfg.kaggle_username.lower()
+                )
+                hint = (
+                    f"\n   Authenticated as: {_cfg.kaggle_username or '(unknown)'}"
+                    f"\n   Task owner in slug: {owner_in_slug}"
+                    + ("\n   [!] Username mismatch — the task owner does not match your credentials." if mismatch else "")
+                    + "\n\n   Possible causes:"
+                    + "\n   • The task hasn't had models run against it yet (no runs to download)"
+                    + "\n   • The task slug is wrong — use 'Browse My Tasks' to see your actual task slugs"
+                    + "\n   • The task is private and requires matching credentials"
+                )
+                log.write_line(f"   [x] {task_slug}: no access ({exc_str[:60]}){hint}")
                 return None
             log.write_line(f"   [x] Failed to list runs for {task_slug}: {exc_str}")
             return []
@@ -567,11 +588,19 @@ class PullView(Vertical):
                 for t in resp.tasks or []:
                     slug_obj = t.slug
                     if slug_obj and hasattr(slug_obj, "owner_slug"):
-                        slug_str = f"{slug_obj.owner_slug}/{slug_obj.task_slug}"
+                        owner = slug_obj.owner_slug or ""
+                        tslug = slug_obj.task_slug  or ""
+                        ver   = slug_obj.version_number or 0
+                        slug_str = f"{owner}/{tslug}" + (f"/{ver}" if ver else "")
                     else:
                         slug_str = str(slug_obj or "(unknown)")
-                    state = str(t.creation_state or "")
-                    log.write_line(f"  {slug_str}  [{state}]")
+                    state = str(t.creation_state or "").replace(
+                        "BENCHMARK_TASK_VERSION_CREATION_STATE_", "")
+                    url = getattr(t, "url", "") or ""
+                    log.write_line(f"  slug:  {slug_str}")
+                    log.write_line(f"  url:   {url or '(none)'}")
+                    log.write_line(f"  state: {state}")
+                    log.write_line("")
                     count += 1
                 page_token = resp.next_page_token or ""
                 if not page_token:
@@ -580,8 +609,9 @@ class PullView(Vertical):
             log.write_line(f"\n>> {count} task(s) found.")
             if count > 0:
                 log.write_line(
-                    "   Tip: copy a task slug above → paste into the slug field,\n"
-                    "   check 'Single task' mode, then click Pull."
+                    "   Tip: copy the 'slug:' line above → paste into the slug field,\n"
+                    "   check 'Single task' mode, then click Pull.\n"
+                    "   Format: owner/task-slug  or  owner/task-slug/version"
                 )
         except Exception as exc:
             log.write_line(f"[x] Failed to list tasks: {exc}")
