@@ -2,16 +2,21 @@
 Merge multiple benchmark .run.json files into two publication-ready formats:
 
   Format A — SFT-ready  (evalflow_sft.csv / .parquet)
-      One row per passing model response. Includes the full conversation,
+      One row per model response per subtask. For single-request tasks this
+      is one row per file; for multi-subtask tasks it is one row per subtask,
+      each a coherent (question, answer) pair. Includes the full conversation,
       per-assertion reasoning, token metrics, timestamps, ground truth,
       and task definition.
 
   Format B — Preference pairs  (evalflow_preferences.csv / .parquet)
-      Sampled all-pairs: up to max_pairs_per_question (passing × failing)
-      combinations per question. Column names match HuggingFace TRL
-      DPOTrainer convention (prompt / chosen / rejected).
+      All model pairs for each (task, question) where scores differ by >= 0.2.
+      Column names match HuggingFace TRL DPOTrainer convention
+      (prompt / chosen / rejected).
 """
 
+from __future__ import annotations
+
+import itertools
 import json
 import random
 import re
@@ -49,8 +54,10 @@ PREF_COLUMNS = [
     "ground_truth",
     "chosen",          # renamed from "chosen_response"
     "chosen_model",
+    "chosen_score",
     "rejected",        # renamed from "rejected_response"
     "rejected_model",
+    "rejected_score",
     "timestamp",
 ]
 
@@ -82,20 +89,35 @@ def validate_run_json(path: Path) -> tuple[bool, str]:
         return False, str(exc)
 
 
-def parse_run_json(path: Path) -> tuple[dict | None, str]:
+def parse_run_json(path: Path) -> tuple[list[dict], str]:
     """
-    Parse a single .run.json into a flat row dict.
-    Returns (row_dict, "") on success, or (None, reason) on failure.
+    Parse a .run.json into one row per request (one prompt → one response).
+
+    Multi-subtask tasks produce N rows — one per subtask — each a coherent
+    single-turn Q&A. Single-request tasks produce one row as before.
+    All rows from the same file share the same aggregate score.
+
+    Returns (rows, "") on success, or ([], reason) on failure.
     """
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:
-        return None, f"JSON parse error: {exc}"
+        return [], f"JSON parse error: {exc}"
 
     task_ver   = data.get("taskVersion", {})
     task_name  = task_ver.get("name", "")
     model_slug = data.get("modelVersion", {}).get("slug", "")
     end_time   = data.get("endTime", datetime.now().isoformat())
+
+    # ── Score: boolean (0/1) or numeric (0.0–1.0) ────────────────────────
+    score: float = 0.0
+    for r in data.get("results", []):
+        if r.get("type") == "AGGREGATED":
+            if "booleanResult" in r:
+                score = 1.0 if r["booleanResult"] else 0.0
+            elif isinstance(r.get("numericResult"), dict):
+                score = float(r["numericResult"].get("value", 0.0))
+            break
 
     # ── Find task conversations (skip metadata-only entries and judge) ────
     conversations = data.get("conversations", [])
@@ -106,49 +128,26 @@ def parse_run_json(path: Path) -> tuple[dict | None, str]:
         and "judge" not in c.get("id", "").lower()
     ]
     if not task_convs:
-        return None, "No task conversations with requests found"
+        return [], "No task conversations with requests found"
 
-    # Walk ALL task turns — multi-agent tasks have one conv per turn (t1, t2…).
-    # question  = first CONTENT_ROLE_USER across all turns
-    # llm_response = last CONTENT_ROLE_ASSISTANT (final turn's output)
-    question        = ""
-    llm_response    = ""
-    prompt_template = ""
-    raw_messages    = []
+    # ── Judge model ───────────────────────────────────────────────────────
+    judge_conv = next(
+        (c for c in conversations
+         if "Response assessment" in c.get("id", "")
+         or "judge" in c.get("id", "").lower()),
+        None,
+    )
+    judge_model = ""
+    if judge_conv:
+        for content in judge_conv.get("requests", [{}])[0].get("contents", []):
+            if content.get("role") == "CONTENT_ROLE_ASSISTANT":
+                judge_model = content.get("senderName", "")
 
-    for conv in task_convs:
-        for req in conv.get("requests", []):
-            for content in req.get("contents", []):
-                role  = content.get("role", "")
-                parts = content.get("parts", [])
-                text  = parts[0].get("text", "") if parts else ""
-                if role == "CONTENT_ROLE_SYSTEM" and not prompt_template:
-                    prompt_template = text
-                elif role == "CONTENT_ROLE_USER":
-                    if not question:
-                        question = text
-                    raw_messages.append({"role": "user", "content": text})
-                elif role == "CONTENT_ROLE_ASSISTANT":
-                    llm_response = text          # keep updating → last turn wins
-                    raw_messages.append({"role": "assistant", "content": text})
-
-    if not prompt_template:
-        prompt_template = question  # bare prompt — the question is the full template
-
-    if not question:
-        return None, "Could not extract question (no CONTENT_ROLE_USER turn)"
-    if not llm_response:
-        return None, "Could not extract LLM response (no CONTENT_ROLE_ASSISTANT turn)"
-
-    # ── Overall pass/fail ─────────────────────────────────────────────────
-    score = 0
-    for r in data.get("results", []):
-        if r.get("type") == "AGGREGATED":
-            score = int(r.get("booleanResult", False))
-            break
+    # ── Token metrics (whole-task aggregate) ──────────────────────────────
+    root_conv = next((c for c in conversations if not c.get("requests")), None)
+    metrics = (root_conv or task_convs[0]).get("metrics", {})
 
     # ── Ground truth from assertion definitions ───────────────────────────
-    # Handles assert_in("expected", response), assert_equals, assert_contains
     _ASSERT_RE = re.compile(
         r'assert_(?:in|equals|contains)\(\s*["\']([^"\']+)["\']', re.IGNORECASE
     )
@@ -166,37 +165,15 @@ def parse_run_json(path: Path) -> tuple[dict | None, str]:
         if a.get("status") != "BENCHMARK_TASK_RUN_ASSERTION_STATUS_PASSED"
     ]
     reasoning = " | ".join(failed) if failed else ""
-
-    # ── Full assertions array (all statuses) ──────────────────────────────
     assertions_json = json.dumps(data.get("assertions", []), ensure_ascii=False)
 
-    # ── Judge model ───────────────────────────────────────────────────────
-    judge_conv = next(
-        (c for c in conversations
-         if "Response assessment" in c.get("id", "")
-         or "judge" in c.get("id", "").lower()),
-        None,
-    )
-    judge_model = ""
-    if judge_conv:
-        for content in judge_conv.get("requests", [{}])[0].get("contents", []):
-            if content.get("role") == "CONTENT_ROLE_ASSISTANT":
-                judge_model = content.get("senderName", "")
-
-    # ── Token metrics — prefer root conv[0] aggregate, fall back to first task conv ──
-    root_conv = next((c for c in conversations if not c.get("requests")), None)
-    metrics = (root_conv or task_convs[0]).get("metrics", {})
-
-    return {
+    # ── Shared metadata across all rows from this file ────────────────────
+    shared = {
         "task_name":        task_name,
         "task_description": task_ver.get("description", ""),
         "task_definition":  task_ver.get("definition", ""),
         "model_name":       model_slug,
-        "question":         question,
         "ground_truth":     ground_truth,
-        "prompt_template":  prompt_template,
-        "llm_response":     llm_response,
-        "messages":         json.dumps(raw_messages, ensure_ascii=False),
         "score":            score,
         "reasoning":        reasoning,
         "assertions_json":  assertions_json,
@@ -204,7 +181,46 @@ def parse_run_json(path: Path) -> tuple[dict | None, str]:
         "input_tokens":     metrics.get("inputTokens", 0),
         "output_tokens":    metrics.get("outputTokens", 0),
         "timestamp":        end_time,
-    }, ""
+    }
+
+    # ── One row per request (subtask) ─────────────────────────────────────
+    rows = []
+    for conv in task_convs:
+        for req in conv.get("requests", []):
+            question = ""
+            llm_response = ""
+            prompt_template = ""
+            raw_messages: list[dict] = []
+
+            for content in req.get("contents", []):
+                role  = content.get("role", "")
+                parts = content.get("parts", [])
+                text  = parts[0].get("text", "") if parts else ""
+                if role == "CONTENT_ROLE_SYSTEM" and not prompt_template:
+                    prompt_template = text
+                elif role == "CONTENT_ROLE_USER":
+                    if not question:
+                        question = text
+                    raw_messages.append({"role": "user", "content": text})
+                elif role == "CONTENT_ROLE_ASSISTANT":
+                    llm_response = text
+                    raw_messages.append({"role": "assistant", "content": text})
+
+            if not question or not llm_response:
+                continue
+
+            rows.append({
+                **shared,
+                "question":        question,
+                "prompt_template": prompt_template or question,
+                "llm_response":    llm_response,
+                "messages":        json.dumps(raw_messages, ensure_ascii=False),
+            })
+
+    if not rows:
+        return [], "No request/response pairs could be extracted"
+
+    return rows, ""
 
 
 def merge_outputs(
@@ -217,12 +233,12 @@ def merge_outputs(
     """
     Parse .run.json files and merge into Format A (SFT) and Format B (preferences).
 
-    passing_only: when True (default), SFT file contains only score==1 rows —
-    correct demonstrations for fine-tuning. Preferences always use all rows.
+    passing_only: when True (default), SFT includes only rows with score >= 0.5.
+    For boolean tasks (0/1) this keeps only correct responses; for numeric tasks
+    it keeps responses scoring at least half-credit.
 
-    max_pairs_per_question: cap on preference pairs per question to prevent
-    questions with many model runs from dominating the training signal.
-    Excess pairs are sampled deterministically (seeded on task+question).
+    max_pairs_per_question: cap on preference pairs per question. Excess pairs
+    are sampled deterministically (seeded on task+question).
 
     Returns (sft_df, pref_df, stats).
     Writes evalflow_sft.csv/.parquet and evalflow_preferences.csv/.parquet to output_dir.
@@ -232,11 +248,11 @@ def merge_outputs(
 
     rows, skipped = [], []
     for path in json_paths:
-        row, reason = parse_run_json(path)
-        if row is None:
+        file_rows, reason = parse_run_json(path)
+        if not file_rows:
             skipped.append((path.name, reason))
         else:
-            rows.append(row)
+            rows.extend(file_rows)
 
     if not rows:
         raise ValueError(f"No valid run files. Skipped: {skipped}")
@@ -252,7 +268,7 @@ def merge_outputs(
     else:
         dupes_removed = 0
 
-    sft_raw = raw[raw["score"] == 1].reset_index(drop=True) if passing_only else raw
+    sft_raw = raw[raw["score"] >= 0.5].reset_index(drop=True) if passing_only else raw
     sft_df  = _build_sft(sft_raw)
     pref_df = _build_preferences(raw, max_pairs_per_question=max_pairs_per_question)
 
@@ -273,7 +289,7 @@ def merge_outputs(
 
     stats = {
         "total_rows":             len(sft_df),
-        "files_merged":           len(rows),
+        "files_merged":           len(json_paths),
         "files_skipped":          len(skipped),
         "duplicates_removed":     dupes_removed,
         "models":                 raw["model_name"].nunique(),
@@ -317,41 +333,49 @@ def _build_sft(raw: pd.DataFrame) -> pd.DataFrame:
 
 # ── Format B — Preference pairs ─────────────────────────────────────────────
 
+_MIN_SCORE_DELTA = 0.2  # minimum score difference to consider a meaningful preference
+
+
 def _build_preferences(raw: pd.DataFrame, max_pairs_per_question: int = 8) -> pd.DataFrame:
     """
-    All-pairs up to max_pairs_per_question per question.
+    All model pairs per (task, question) where chosen_score - rejected_score >= 0.2.
+
+    Using itertools.combinations to compare every model pair, not just max-vs-min,
+    so questions with multiple models at different score levels produce richer signal.
+    Pairs are capped at max_pairs_per_question; overflow is sampled deterministically.
 
     Column names match HuggingFace TRL DPOTrainer: prompt / chosen / rejected.
-    When the full product exceeds the cap, pairs are shuffled with a seed
-    derived from task+question so the same inputs always yield the same sample.
+    chosen_score / rejected_score are included for downstream filtering.
     """
     pairs = []
     for (task_name, question), grp in raw.groupby(["task_name", "question"]):
-        passed = grp[grp["score"] == 1]
-        failed = grp[grp["score"] == 0]
-        if passed.empty or failed.empty:
-            continue
+        if grp["score"].nunique() < 2:
+            continue  # all models scored identically — no preference signal
 
         ground_truth = grp["ground_truth"].iloc[0] if "ground_truth" in grp.columns else ""
         ts = datetime.now().isoformat()
 
-        question_pairs = [
-            {
-                "task_name":     task_name,
-                "prompt":        question,
-                "ground_truth":  ground_truth,
-                "chosen":        chosen_row["llm_response"],
-                "chosen_model":  chosen_row["model_name"],
-                "rejected":      rejected_row["llm_response"],
-                "rejected_model": rejected_row["model_name"],
-                "timestamp":     ts,
-            }
-            for _, chosen_row in passed.iterrows()
-            for _, rejected_row in failed.iterrows()
-        ]
+        question_pairs = []
+        for a, b in itertools.combinations(grp.itertuples(index=False), 2):
+            diff = a.score - b.score
+            if abs(diff) < _MIN_SCORE_DELTA:
+                continue
+            chosen_row   = a if diff > 0 else b
+            rejected_row = b if diff > 0 else a
+            question_pairs.append({
+                "task_name":      task_name,
+                "prompt":         question,
+                "ground_truth":   ground_truth,
+                "chosen":         chosen_row.llm_response,
+                "chosen_model":   chosen_row.model_name,
+                "chosen_score":   chosen_row.score,
+                "rejected":       rejected_row.llm_response,
+                "rejected_model": rejected_row.model_name,
+                "rejected_score": rejected_row.score,
+                "timestamp":      ts,
+            })
 
         if len(question_pairs) > max_pairs_per_question:
-            # zlib.crc32 is stable across Python sessions (unlike hash(), which is PYTHONHASHSEED-salted)
             seed = zlib.crc32(f"{task_name}:{question}".encode())
             random.Random(seed).shuffle(question_pairs)
             question_pairs = question_pairs[:max_pairs_per_question]

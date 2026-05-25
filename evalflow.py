@@ -83,6 +83,7 @@ from views.monitor_view import MonitorView
 from views.publish_view import PublishView
 from views.pull_view import PullView
 from views.results_view import ResultsView
+from views.run_view import RunView
 
 EVALFLOW_THEME = Theme(
     name="evalflow",
@@ -109,7 +110,8 @@ NAV_ITEMS = [
     ("leaderboard", "Leaderboard", "3", "model ranking"),
     ("merge",       "Merge",       "4", "build datasets"),
     ("publish",     "Publish",     "5", "upload to kaggle"),
-    ("monitor",     "Monitor",     "6", "daily watchers"),
+    ("run",         "Run",         "6", "schedule own tasks"),
+    ("monitor",     "Monitor",     "7", "daily watchers"),
 ]
 
 _VIEW_LABELS = {v[0]: v[1] for v in NAV_ITEMS}
@@ -242,7 +244,7 @@ class StatusBar(Horizontal):
         dot = "[#34C759]●[/#34C759]" if kaggle_ok else "[#FF3B30]●[/#FF3B30]"
         self.query_one("#sb-left",   Static).update(f"{dot} kaggle")
         self.query_one("#sb-center", Static).update(
-            "[dim]1–6[/dim] tabs  [dim]↑↓[/dim] navigate  [dim]?[/dim] help  [dim]q[/dim] quit"
+            "[dim]1–7[/dim] tabs  [dim]↑↓[/dim] navigate  [dim]?[/dim] help  [dim]q[/dim] quit"
         )
         label = _VIEW_LABELS.get(view_id, "")
         self.query_one("#sb-right",  Static).update(f"evalflow · {label}")
@@ -348,7 +350,8 @@ class EvalflowApp(App):
         Binding("3",      "nav_leaderboard", "Leaderboard", show=False),
         Binding("4",      "nav_merge",       "Merge",       show=False),
         Binding("5",      "nav_publish",     "Publish",     show=False),
-        Binding("6",      "nav_monitor",     "Monitor",     show=False),
+        Binding("6",      "nav_run",         "Run",         show=False),
+        Binding("7",      "nav_monitor",     "Monitor",     show=False),
         Binding("escape", "unfocus",         "Unfocus",     show=False),
         Binding("down",   "focus_next",      "",            show=False),
         Binding("up",     "focus_previous",  "",            show=False),
@@ -385,6 +388,7 @@ class EvalflowApp(App):
                     yield LeaderboardView(id="leaderboard")
                     yield MergeView(id="merge")
                     yield PublishView(id="publish")
+                    yield RunView(id="run")
                     yield MonitorView(id="monitor")
                 yield StatusBar()
         yield HelpView(id="help-overlay")
@@ -421,6 +425,7 @@ class EvalflowApp(App):
     def action_nav_leaderboard(self): self.switch_view("leaderboard")
     def action_nav_merge(self):       self.switch_view("merge")
     def action_nav_publish(self):     self.switch_view("publish")
+    def action_nav_run(self):         self.switch_view("run")
     def action_nav_monitor(self):     self.switch_view("monitor")
 
     async def action_open_wizard(self) -> None:

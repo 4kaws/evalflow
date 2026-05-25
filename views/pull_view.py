@@ -36,7 +36,7 @@ def _save_history(slugs: list[str]) -> None:
 
 
 class PullView(Vertical):
-    _BTN_IDS = ["pull-btn", "list-btn", "open-btn"]
+    _BTN_IDS = ["pull-btn", "list-btn", "browse-btn", "open-btn"]
 
     BINDINGS = [
         Binding("down",   "nav_down",  show=False),
@@ -77,13 +77,13 @@ class PullView(Vertical):
         fid = self._fid()
         if fid in self._BTN_IDS:
             idx = self._BTN_IDS.index(fid)
-            self._select_btn(self._BTN_IDS[(idx - 1) % 3])
+            self._select_btn(self._BTN_IDS[(idx - 1) % len(self._BTN_IDS)])
 
     def action_nav_right(self) -> None:
         fid = self._fid()
         if fid in self._BTN_IDS:
             idx = self._BTN_IDS.index(fid)
-            self._select_btn(self._BTN_IDS[(idx + 1) % 3])
+            self._select_btn(self._BTN_IDS[(idx + 1) % len(self._BTN_IDS)])
 
     def action_nav_esc(self) -> None:
         if self._fid() in self._BTN_IDS:
@@ -194,13 +194,19 @@ class PullView(Vertical):
                     classes="field-input",
                 )
 
-            # Auto-navigate to merge
+            # Mode and auto-navigate
+            yield Checkbox(
+                "Single task  (skip benchmark discovery — slug is a direct task, not a benchmark)",
+                value=False,
+                id="single-task-mode",
+            )
             yield Checkbox("Go to Merge after pull", value=True, id="auto-merge-switch")
 
             with Horizontal(id="btn-row"):
-                yield Button("Pull All Tasks",  id="pull-btn",  variant="primary")
-                yield Button("List tasks only", id="list-btn",  variant="default")
-                yield Button("Open on Kaggle",  id="open-btn",  variant="default")
+                yield Button("Pull All Tasks",  id="pull-btn",   variant="primary")
+                yield Button("List tasks only", id="list-btn",   variant="default")
+                yield Button("Browse My Tasks", id="browse-btn", variant="default")
+                yield Button("Open on Kaggle",  id="open-btn",   variant="default")
 
             yield Static("Pull Log", classes="section-title")
             yield Log(id="pull-log", highlight=True)
@@ -224,6 +230,8 @@ class PullView(Vertical):
             self._do_pull(download=True)
         elif bid == "list-btn":
             self._do_pull(download=False)
+        elif bid == "browse-btn":
+            self._browse_my_tasks()
         elif bid == "open-btn":
             slug = self.query_one("#slug-input", Input).value.strip()
             if slug:
@@ -253,7 +261,8 @@ class PullView(Vertical):
         self.query_one("#status-bar").update("")
         slug    = self.query_one("#slug-input", Input).value.strip()
         out_dir = Path(self.query_one("#outdir-input", Input).value.strip())
-        auto_merge = self.query_one("#auto-merge-switch", Checkbox).value
+        auto_merge  = self.query_one("#auto-merge-switch", Checkbox).value
+        single_task = self.query_one("#single-task-mode",  Checkbox).value
         if not slug:
             log.write_line("[x] No slug entered.\n   Format: username/notebook-name")
             return
@@ -266,19 +275,25 @@ class PullView(Vertical):
             )
             return
         import re as _re
-        # Normalise task names to URL slugs: "Should I walk?" → "should-i-walk"
-        user, task = slug.split("/", 1)
-        task = _re.sub(r"[^\w\s-]", "", task).strip().lower()
-        task = _re.sub(r"[\s_]+", "-", task)
-        slug = f"{user}/{task}"
-        self._run_pull(slug, out_dir, download, auto_merge)
+        # Split into at most 3 parts — Kaggle task URLs are owner/task-name/version
+        parts = [p for p in slug.split("/") if p]
+        if len(parts) < 2:
+            log.write_line("[x] Slug must include owner and task name: owner/task-name")
+            return
+        user = parts[0].strip().lower()
+        # Normalise the task segment only; drop trailing version number if present
+        task_part = parts[1]
+        task_part = _re.sub(r"[^\w\s-]", "", task_part).strip().lower()
+        task_part = _re.sub(r"[\s_]+", "-", task_part)
+        slug = f"{user}/{task_part}"
+        self._run_pull(slug, out_dir, download, auto_merge, single_task)
 
     # ------------------------------------------------------------------ #
     #  Core pull logic (runs in background thread)                        #
     # ------------------------------------------------------------------ #
 
     @work(thread=True)
-    def _run_pull(self, slug: str, out_dir: Path, download: bool, auto_merge: bool) -> None:
+    def _run_pull(self, slug: str, out_dir: Path, download: bool, auto_merge: bool, single_task: bool = False) -> None:
         log = self.query_one("#pull-log", Log)
 
         # Authenticate
@@ -316,10 +331,14 @@ class PullView(Vertical):
             )
             return
 
-        # Discover tasks via the leaderboard API
-        task_slugs = self._discover_tasks(kag_client, slug, log)
-        if not task_slugs:
-            return
+        # Discover tasks — either via leaderboard API or treat slug as a single task
+        if single_task:
+            log.write_line(f">> Single-task mode: treating '{slug}' as a direct task slug.\n")
+            task_slugs = [slug]
+        else:
+            task_slugs = self._discover_tasks(kag_client, slug, log)
+            if not task_slugs:
+                return
 
         if not download:
             return
@@ -377,7 +396,7 @@ class PullView(Vertical):
                     self.app.query_one("#leaderboard", LeaderboardView).action_refresh()
                 except Exception:
                     pass
-            if auto_merge and all_downloaded:
+            if (auto_merge or single_task) and all_downloaded:
                 self.app.switch_view("merge")  # type: ignore
 
         self.app.call_from_thread(_finish)
@@ -534,6 +553,61 @@ class PullView(Vertical):
         return saved
 
     # ------------------------------------------------------------------ #
+    #  Browse own tasks                                                    #
+    # ------------------------------------------------------------------ #
+
+    @work(thread=True)
+    def _browse_my_tasks(self) -> None:
+        log = self.query_one("#pull-log", Log)
+        log.clear()
+        log.write_line(">> Listing your benchmark tasks…\n")
+
+        try:
+            import os
+            from kagglesdk import KaggleClient
+            from config import config as _cfg
+            if _cfg.kaggle_username and _cfg.kaggle_key:
+                os.environ["KAGGLE_USERNAME"] = _cfg.kaggle_username
+                os.environ["KAGGLE_KEY"]      = _cfg.kaggle_key
+            kag_client = KaggleClient()
+        except Exception as exc:
+            log.write_line(f"[x] Auth failed: {exc}")
+            return
+
+        try:
+            from kagglesdk.benchmarks.types.benchmark_tasks_api_service import ApiListBenchmarkTasksRequest
+            client = kag_client.benchmarks.benchmark_tasks_api_client
+            page_token = ""
+            count = 0
+            while True:
+                req = ApiListBenchmarkTasksRequest()
+                req.page_size = 100
+                if page_token:
+                    req.page_token = page_token
+                resp = client.list_benchmark_tasks(req)
+                for t in resp.tasks or []:
+                    slug_obj = t.slug
+                    if slug_obj and hasattr(slug_obj, "owner_slug"):
+                        slug_str = f"{slug_obj.owner_slug}/{slug_obj.task_slug}"
+                    else:
+                        slug_str = str(slug_obj or "(unknown)")
+                    state = str(t.creation_state or "")
+                    log.write_line(f"  {slug_str}  [{state}]")
+                    count += 1
+                page_token = resp.next_page_token or ""
+                if not page_token:
+                    break
+
+            log.write_line(f"\n>> {count} task(s) found.")
+            if count > 0:
+                log.write_line(
+                    "   Tip: copy a task slug above → paste into the slug field,\n"
+                    "   check 'Single task' mode, then click Pull."
+                )
+        except Exception as exc:
+            log.write_line(f"[x] Failed to list tasks: {exc}")
+
+    # ------------------------------------------------------------------ #
     #  Table + history                                                     #
     # ------------------------------------------------------------------ #
 
@@ -545,11 +619,12 @@ class PullView(Vertical):
 
         for task_slug, path in items:
             size_kb = round(path.stat().st_size / 1024, 1)
-            row, _ = parse_run_json(path)
-            if row:
+            file_rows, _ = parse_run_json(path)
+            if file_rows:
+                row   = file_rows[0]
                 task  = row.get("task_name", "?")
                 model = row.get("model_name", "?").split("/")[-1]
-                score = "pass" if row.get("score", 0) else "fail"
+                score = "pass" if row.get("score", 0) >= 0.5 else "fail"
             else:
                 task, model, score = "?", "?", "?"
 

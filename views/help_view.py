@@ -18,7 +18,7 @@ def _group(title: str, rows: list[tuple[str, str]]) -> str:
 
 HELP_SECTIONS = [
     _group("Navigation", [
-        ("1 – 6",   "switch tab"),
+        ("1 – 7",   "switch tab"),
         ("?",       "open / close this panel"),
         ("w",       "re-open setup wizard"),
         ("q",       "quit evalflow"),
@@ -28,7 +28,7 @@ HELP_SECTIONS = [
         ("↑ / ↓",   "move between fields"),
         ("← / →",   "cycle between buttons / filters"),
         ("⏎",       "confirm / activate"),
-        ("Ctrl+R",  "refresh (Results, Leaderboard, Monitor)"),
+        ("Ctrl+R",  "refresh (Results, Leaderboard, Run, Monitor)"),
         ("Ctrl+M",  "run merge (Merge tab)"),
         ("Ctrl+U",  "publish new (Publish tab)"),
     ]),
@@ -38,7 +38,8 @@ HELP_SECTIONS = [
         ("",  "3. Leaderboard → cross-model accuracy"),
         ("",  "4. Merge  → build SFT + preference CSVs"),
         ("",  "5. Publish → upload to Kaggle Datasets"),
-        ("",  "6. Monitor → set up daily auto-runs"),
+        ("",  "6. Run    → schedule runs on your own tasks"),
+        ("",  "7. Monitor → set up daily auto-runs"),
     ]),
     _group("Output files", [
         ("",  "evalflow_sft.csv         — one row per passing response"),

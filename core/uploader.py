@@ -1,5 +1,7 @@
 """Upload merged dataset to Kaggle Datasets using the kaggle SDK."""
 
+from __future__ import annotations
+
 import json
 import os
 import shutil
@@ -123,58 +125,74 @@ def upload_dataset(
         if log_cb:
             log_cb(msg)
 
+    # ── Read credentials ─────────────────────────────────────────────────
+    username = os.environ.get("KAGGLE_USERNAME", "")
+    api_key  = os.environ.get("KAGGLE_KEY", "")
+    if not username or not api_key:
+        try:
+            import json as _json, pathlib as _pl
+            creds = _json.loads((_pl.Path.home() / ".kaggle/kaggle.json").read_text())
+            username = username or creds.get("username", "")
+            api_key  = api_key  or creds.get("key", "")
+        except Exception:
+            pass
+    if not username or not api_key:
+        return UploadResult(
+            success=False,
+            error="Credentials not found. Set KAGGLE_USERNAME and KAGGLE_KEY.",
+        )
+    log("[ok] Authenticated with Kaggle API")
+
+    # ── Read metadata ─────────────────────────────────────────────────────
+    meta_path = folder / "dataset-metadata.json"
+    try:
+        with open(meta_path) as f:
+            meta = json.load(f)
+    except Exception as exc:
+        return UploadResult(success=False, error=f"Could not read metadata: {exc}")
+
+    dataset_id = meta.get("id", "")
+    if "/" not in dataset_id:
+        return UploadResult(success=False, error=f"Invalid dataset id: {dataset_id!r}")
+    owner, slug = dataset_id.split("/", 1)
+
     try:
         from kaggle.api.kaggle_api_extended import KaggleApi
         api = KaggleApi()
         api.authenticate()
-        log("[ok] Authenticated with Kaggle API")
-    except ImportError:
-        return UploadResult(
-            success=False,
-            error="kaggle package not installed. Run: pip install kaggle",
-        )
-    except (SystemExit, Exception) as exc:
-        return UploadResult(
-            success=False,
-            error=f"Auth failed: {exc}\nMake sure KAGGLE_USERNAME and KAGGLE_KEY are set.",
-        )
 
-    try:
+        # ── Optionally append existing data ──────────────────────────────
         if is_update and append:
-            meta_path = folder / "dataset-metadata.json"
-            with open(meta_path) as f:
-                meta = json.load(f)
-            owner, slug = meta.get("id", "/").split("/", 1)
-            fetch_and_append_existing(api, owner, slug, folder, log)
+            try:
+                fetch_and_append_existing(api, owner, slug, folder, log)
+            except Exception as exc:
+                log(f"   (skipping append — {exc})")
 
+        # ── Create version or new dataset ─────────────────────────────────
         if is_update:
-            log(">> Updating existing dataset…")
+            log(">> Creating new dataset version…")
             api.dataset_create_version(
                 folder=str(folder),
                 version_notes="Updated via Evalflow",
                 convert_to_csv=False,
                 delete_old_versions=False,
+                quiet=True,
             )
         else:
             log(">> Creating new dataset…")
             api.dataset_create_new(
                 folder=str(folder),
-                convert_to_csv=False,
                 public=True,
-                quiet=False,
+                convert_to_csv=False,
+                dir_mode="zip",
+                quiet=True,
             )
 
-        # Read slug to build URL
-        meta_path = folder / "dataset-metadata.json"
-        with open(meta_path) as f:
-            meta = json.load(f)
-        dataset_id = meta.get("id", "")
-        url = f"https://www.kaggle.com/datasets/{dataset_id}" if dataset_id else "https://www.kaggle.com/datasets"
-
+        url = f"https://www.kaggle.com/datasets/{owner}/{slug}"
         log(f"[ok] Dataset published: {url}")
         return UploadResult(success=True, url=url)
 
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         error_msg = str(exc)
         log(f"[x] Upload failed: {error_msg}")
         return UploadResult(success=False, error=error_msg)

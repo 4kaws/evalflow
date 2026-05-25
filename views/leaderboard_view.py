@@ -135,9 +135,8 @@ class LeaderboardView(Vertical):
 
         rows = []
         for path in run_files:
-            row, _ = parse_run_json(path)
-            if row:
-                rows.append(row)
+            file_rows, _ = parse_run_json(path)
+            rows.extend(file_rows)
 
         if not rows:
             return

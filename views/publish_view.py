@@ -223,11 +223,19 @@ class PublishView(Vertical):
         margin-top: 1;
         padding: 0 1;
     }
+    #url-row {
+        height: 3;
+        margin-top: 1;
+        align: left middle;
+    }
     #url-panel {
         color: $success;
-        margin-top: 1;
-        height: 2;
+        height: 3;
+        content-align: left middle;
         padding: 0 1;
+    }
+    #open-dataset-btn {
+        margin-left: 1;
     }
     #creds-note { color: #636E7B; margin-bottom: 0; }
     #files-panel {
@@ -245,6 +253,7 @@ class PublishView(Vertical):
         self._sft_path:  Path | None = None
         self._pref_path: Path | None = None
         self._state: dict = _load_publish_state()
+        self._published_url: str = ""
 
     def compose(self) -> ComposeResult:
         yield PageHeader(
@@ -312,7 +321,9 @@ class PublishView(Vertical):
 
             yield Static("Publish Log", classes="section-title")
             yield Log(id="publish-log", highlight=True)
-            yield Static("", id="url-panel")
+            with Horizontal(id="url-row"):
+                yield Static("", id="url-panel")
+                yield Button("Open Dataset on Kaggle", id="open-dataset-btn", variant="default", disabled=True)
 
     def set_merged_csvs(self, sft_path: Path, pref_path: Path) -> None:
         """Called by MergeView after a successful merge."""
@@ -371,6 +382,17 @@ class PublishView(Vertical):
             self._do_publish(is_update=False)
         elif event.button.id == "update-btn":
             self._do_publish(is_update=True)
+        elif event.button.id == "open-dataset-btn":
+            if self._published_url:
+                import subprocess
+                try:
+                    subprocess.Popen(
+                        ["/mnt/c/Windows/explorer.exe", self._published_url],
+                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+                except Exception:
+                    self.query_one("#publish-log", Log).write_line(f">> {self._published_url}")
+            return
         self._reset_btns()
         self.app.set_focus(None)
 
@@ -390,7 +412,9 @@ class PublishView(Vertical):
     def _do_publish(self, is_update: bool) -> None:
         log = self.query_one("#publish-log", Log)
         log.clear()
+        self._published_url = ""
         self.query_one("#url-panel").update("")
+        self.query_one("#open-dataset-btn", Button).disabled = True
 
         sft_path  = self._sft_path  or config.output_dir / "evalflow_sft.csv"
         pref_path = self._pref_path or config.output_dir / "evalflow_preferences.csv"
@@ -474,7 +498,9 @@ class PublishView(Vertical):
 
         def _apply():
             if result.success:
+                self._published_url = result.url
                 self.query_one("#url-panel").update(f"  {result.url}")
+                self.query_one("#open-dataset-btn", Button).disabled = False
             else:
                 self.query_one("#publish-log", Log).write_line(f"\n[x] {result.error}")
 

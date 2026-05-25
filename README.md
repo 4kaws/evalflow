@@ -47,11 +47,11 @@ Kaggle (browser)                              Evalflow (terminal)
    on kaggle.com/benchmarks
                                              6. Results
 3. Click Add Models on the                       Browse pulled data, filter by
-   Benchmark page to run across                  model and pass/fail score.
+   Benchmark page to run across                  model and score.
    Claude, Gemini, Llama, DeepSeek
    (free, within quota)                      7. Leaderboard
                                                  Cross-model accuracy ranking with
-4. Kaggle runs each task notebook                per-question pass/fail diff.
+4. Kaggle runs each task notebook                per-question score comparison.
    against every model and saves
    the results as .run.json files           8. Merge
                                                  Combines all outputs into two files:
@@ -212,7 +212,7 @@ After merging, Evalflow produces two CSVs ready for AI researchers to use direct
 
 ### `evalflow_sft.csv` — SFT / fine-tuning format
 
-One row per passing model response, across all tasks and all models.
+One row per model response with score > 0, across all tasks and all models.
 
 | Column | Description |
 |--------|-------------|
@@ -223,7 +223,7 @@ One row per passing model response, across all tasks and all models.
 | `prompt_template` | Exact system prompt used |
 | `messages` | Full conversation in `[{"role", "content"}]` JSON — SFT-ready |
 | `llm_response` | Raw model output |
-| `score` | Pass/fail (0/1) |
+| `score` | Model score: `1.0`/`0.0` for boolean tasks, `0.0`–`1.0` for numeric tasks |
 | `reasoning` | Failed assertion messages, pipe-separated |
 | `assertions_json` | Full assertion array with statuses |
 | `task_definition` | Source code of the task function |
@@ -233,18 +233,20 @@ One row per passing model response, across all tasks and all models.
 
 ### `evalflow_preferences.csv` — RLHF / DPO preference pairs
 
-One row per question where at least one model **passed** and at least one **failed**.
+One row per question where models scored differently (highest-scoring vs lowest-scoring).
 Column names match the HuggingFace TRL `DPOTrainer` convention.
 
 | Column | Description |
 |--------|-------------|
 | `task_name` | Task identifier |
 | `prompt` / `ground_truth` | Shared question and expected answer |
-| `chosen` / `chosen_model` | Best passing response and its model |
-| `rejected` / `rejected_model` | Worst failing response and its model |
+| `chosen` / `chosen_model` | Higher-scoring response and its model |
+| `chosen_score` | Score of the chosen response |
+| `rejected` / `rejected_model` | Lower-scoring response and its model |
+| `rejected_score` | Score of the rejected response |
 | `timestamp` | ISO 8601 timestamp |
 
-Questions where all models pass or all fail are excluded — they carry no preference signal.
+Questions where all models score identically are excluded — they carry no preference signal.
 
 ---
 

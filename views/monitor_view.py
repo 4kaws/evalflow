@@ -104,74 +104,10 @@ def _next_run_text(enabled: bool, hh: int, mm: int) -> str:
     return f"Next run: {next_run.strftime('%Y-%m-%d %H:%M')}  (in {hours}h {mins}m)"
 
 
-def _resolve_to_kernel_refs(api, owner: str, task_slugs: list[str], log_fn) -> list[str]:
+def _discover_tasks(kag_client, benchmark_slug: str, log=None) -> list[str]:
     """
-    Map benchmark-internal task slugs to real Kaggle kernel refs via token matching.
-    See pull_view._resolve_to_kernel_refs for the full explanation.
-    """
-    def write(msg):
-        if log_fn:
-            log_fn(msg)
-    try:
-        all_kernels: list = []
-        for page in range(1, 6):
-            page_results = api.kernels_list(user=owner, page=page, page_size=100) or []
-            all_kernels.extend(page_results)
-            if len(page_results) < 100:
-                break
-        kernel_slug_map = {k.ref.split("/")[-1]: k.ref for k in all_kernels if k.ref}
-    except Exception as exc:
-        write(f"   (kernel list lookup failed — using leaderboard slugs: {exc})")
-        return task_slugs
-
-    resolved: list[str] = []
-    seen: set[str] = set()
-
-    for full_slug in task_slugs:
-        lb_slug = full_slug.split("/")[-1]
-
-        if lb_slug in kernel_slug_map:
-            ref = kernel_slug_map[lb_slug]
-            if ref not in seen:
-                resolved.append(ref)
-                seen.add(ref)
-            continue
-
-        lb_tokens = set(lb_slug.split("-"))
-        best_ref, best_score, best_len = None, -1, 0
-        for k_slug, k_ref in kernel_slug_map.items():
-            k_tokens = set(k_slug.split("-"))
-            overlap = len(lb_tokens & k_tokens)
-            if overlap > best_score or (overlap == best_score and len(k_tokens) > best_len):
-                best_score, best_len, best_ref = overlap, len(k_tokens), k_ref
-
-        if best_ref:
-            k_slug_only = best_ref.split("/")[-1]
-            k_tokens = set(k_slug_only.split("-"))
-            if best_score >= len(k_tokens) - 1:
-                if best_ref != full_slug:
-                    write(f"   (resolved {lb_slug} → {k_slug_only})")
-                if best_ref not in seen:
-                    resolved.append(best_ref)
-                    seen.add(best_ref)
-                continue
-
-        if full_slug not in seen:
-            resolved.append(full_slug)
-            seen.add(full_slug)
-
-    return resolved
-
-
-def _discover_tasks(api, benchmark_slug: str, kag_client=None, log=None) -> list[str]:
-    """
-    Return all task notebook slugs inside a benchmark.
-
-    Strategy 1: get_benchmark_leaderboard — extracts task slugs directly from
-                the leaderboard API, then resolves internal slugs to real kernel
-                refs via token matching against the owner's kernel list.
-    Strategy 2: kernels_list(parent_kernel=) — official parent/child API.
-    Strategy 3: treat the slug itself as a single task.
+    Return all task slugs inside a benchmark via the leaderboard API.
+    Falls back to treating the slug itself as a single task.
     """
     def write(msg):
         if log:
@@ -179,40 +115,25 @@ def _discover_tasks(api, benchmark_slug: str, kag_client=None, log=None) -> list
 
     username, slug_name = benchmark_slug.split("/", 1)
 
-    # Strategy 1: benchmark leaderboard API → task slugs
-    if kag_client is not None:
-        try:
-            from kagglesdk.benchmarks.types.benchmarks_api_service import ApiGetBenchmarkLeaderboardRequest
-            req = ApiGetBenchmarkLeaderboardRequest()
-            req.owner_slug     = username
-            req.benchmark_slug = slug_name
-            lb = kag_client.benchmarks.benchmarks_api_client.get_benchmark_leaderboard(req)
-            task_slugs: set[str] = set()
-            for row in (lb.rows or []):
-                for tr in (row.task_results or []):
-                    if tr.benchmark_task_slug:
-                        short = tr.benchmark_task_slug.rstrip('/').split('/')[-1]
-                        task_slugs.add(short)
-            if task_slugs:
-                raw_slugs = [f"{username}/{s}" for s in sorted(task_slugs)]
-                slugs = _resolve_to_kernel_refs(api, username, raw_slugs, write)
-                write(f"   Found {len(slugs)} task(s) via leaderboard API")
-                return slugs
-        except Exception as exc:
-            write(f"   (leaderboard API failed: {exc})")
-
-    # Strategy 2: kernels_list parent lookup
     try:
-        children = api.kernels_list(parent_kernel=benchmark_slug, page_size=100)
-        if children:
-            slugs = [k.ref for k in children if k.ref]
-            if slugs:
-                write(f"   Found {len(slugs)} task(s) via parent lookup")
-                return slugs
-    except Exception:
-        pass
+        from kagglesdk.benchmarks.types.benchmarks_api_service import ApiGetBenchmarkLeaderboardRequest
+        req = ApiGetBenchmarkLeaderboardRequest()
+        req.owner_slug     = username
+        req.benchmark_slug = slug_name
+        lb = kag_client.benchmarks.benchmarks_api_client.get_benchmark_leaderboard(req)
+        task_slugs: set[str] = set()
+        for row in (lb.rows or []):
+            for tr in (row.task_results or []):
+                if tr.benchmark_task_slug:
+                    short = tr.benchmark_task_slug.rstrip("/").split("/")[-1]
+                    task_slugs.add(short)
+        if task_slugs:
+            slugs = [f"{username}/{s}" for s in sorted(task_slugs)]
+            write(f"   Found {len(slugs)} task(s) via leaderboard API")
+            return slugs
+    except Exception as exc:
+        write(f"   (leaderboard API failed: {exc})")
 
-    # Strategy 3: treat as single task
     write(f"   Treating '{benchmark_slug}' as a single task")
     return [benchmark_slug]
 
@@ -345,6 +266,7 @@ class MonitorView(Vertical):
                 with Horizontal(id="table-actions"):
                     yield Button("Check All Now",  id="check-btn",     variant="primary")
                     yield Button("Check Selected", id="check-sel-btn", variant="default")
+                    yield Button("Copy Log",       id="copy-log-btn",  variant="default")
 
                 # Destructive / advanced actions grouped separately
                 with Horizontal(id="danger-actions"):
@@ -521,6 +443,9 @@ class MonitorView(Vertical):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         bid = event.button.id
+        if bid == "copy-log-btn":
+            self._copy_log()
+            return
         if bid == "add-btn":
             self._add_watcher()
         elif bid == "check-btn":
@@ -567,6 +492,51 @@ class MonitorView(Vertical):
         self.query_one("#publish-check", Checkbox).value = True
         self.query_one("#edit-indicator", Static).update("New watcher")
         self.query_one("#slug-input", Input).focus()
+
+    def _copy_log(self) -> None:
+        log = self.query_one("#monitor-log", Log)
+        text = "\n".join(log.lines)
+        copied = False
+        import subprocess
+        for cmd in (
+            ["clip.exe"],
+            ["/mnt/c/Windows/System32/clip.exe"],
+            ["/mnt/c/WINDOWS/system32/clip.exe"],
+        ):
+            try:
+                result = subprocess.run(
+                    cmd,
+                    input=text.encode("utf-8"),
+                    capture_output=True,
+                )
+                if result.returncode == 0:
+                    copied = True
+                    break
+            except FileNotFoundError:
+                continue
+            except Exception:
+                continue
+        if not copied:
+            for cmd in (
+                ["xclip", "-selection", "clipboard"],
+                ["xsel", "--clipboard", "--input"],
+                ["wl-copy"],
+            ):
+                try:
+                    result = subprocess.run(cmd, input=text.encode("utf-8"), capture_output=True)
+                    if result.returncode == 0:
+                        copied = True
+                        break
+                except FileNotFoundError:
+                    continue
+                except Exception:
+                    continue
+        btn = self.query_one("#copy-log-btn", Button)
+        if copied:
+            btn.label = "Copied!"
+            self.set_timer(1.5, lambda: setattr(btn, "label", "Copy Log"))
+        else:
+            log.write_line("[!] Copy failed — try: clip.exe, xclip, xsel, or wl-copy")
 
     def _add_watcher(self) -> None:
         log   = self.query_one("#monitor-log", Log)
@@ -644,10 +614,8 @@ class MonitorView(Vertical):
         def write(msg: str) -> None:
             self.app.call_from_thread(log.write_line, msg)
 
-        import os, shutil, requests
-        from kaggle.api.kaggle_api_extended import KaggleApi
+        import os, shutil
         from kagglesdk import KaggleClient
-        from kagglesdk.kernels.types.kernels_api_service import ApiListKernelSessionOutputRequest
         from core.merger import discover_outputs, merge_outputs
 
         username = config.kaggle_username
@@ -662,13 +630,12 @@ class MonitorView(Vertical):
             os.environ["KAGGLE_KEY"] = config.kaggle_key
 
         try:
-            api        = KaggleApi(); api.authenticate()
-            kag_client = KaggleClient(username=username, api_token=api_key)
+            kag_client = KaggleClient()
         except Exception as exc:
             write(f"[x] Auth failed: {exc}"); return
 
         # ── Discover current tasks ────────────────────────────────────
-        current_tasks: list[str] = _discover_tasks(api, slug, kag_client=kag_client, log=write)
+        current_tasks: list[str] = _discover_tasks(kag_client, slug, log=write)
 
         entry     = self._manifest.get(slug, {"known_tasks": []})
         known     = set(entry.get("known_tasks", []))
@@ -692,43 +659,73 @@ class MonitorView(Vertical):
         all_downloaded: list[Path] = []
         pulled_tasks: set[str] = set()   # tasks that had at least one file downloaded
 
+        import io, zipfile
+        from kagglesdk.benchmarks.types.benchmark_tasks_api_service import (
+            ApiBenchmarkTaskSlug,
+            ApiDownloadBenchmarkTaskRunOutputRequest,
+            ApiListBenchmarkTaskRunsRequest,
+            BenchmarkTaskRunState,
+        )
+        tasks_client = kag_client.benchmarks.benchmark_tasks_api_client
+
         for task_slug in new_tasks:
             write(f"\n   Pulling: {task_slug}")
-            owner, kernel_slug = task_slug.split("/", 1)
-            page_token = None
-            run_files  = []
+            owner, slug_name = task_slug.split("/", 1)
+
+            # Collect completed run IDs
+            completed_ids: list[int] = []
+            page_token = ""
             try:
                 while True:
-                    req = ApiListKernelSessionOutputRequest()
-                    req.user_name   = owner
-                    req.kernel_slug = kernel_slug
-                    req.page_size   = 100
+                    req = ApiListBenchmarkTaskRunsRequest()
+                    slug_obj = ApiBenchmarkTaskSlug()
+                    slug_obj.owner_slug = owner
+                    slug_obj.task_slug  = slug_name
+                    req.task_slug  = slug_obj
+                    req.page_size  = 100
                     if page_token:
                         req.page_token = page_token
-                    resp = kag_client.kernels.kernels_api_client.list_kernel_session_output(req)
-                    run_files  += [f for f in (resp.files or []) if Path(f.file_name).name.endswith(".run.json")]
-                    page_token  = resp.next_page_token or ""
+                    resp = tasks_client.list_benchmark_task_runs(req)
+                    for run in resp.runs or []:
+                        if run.state == BenchmarkTaskRunState.BENCHMARK_TASK_RUN_STATE_COMPLETED:
+                            completed_ids.append(run.id)
+                    page_token = resp.next_page_token or ""
                     if not page_token:
                         break
             except Exception as exc:
                 exc_str = str(exc)
-                if "403" in exc_str:
-                    write(f"   [~] {task_slug}: no accessible runs yet (403) — skipping.")
+                if "403" in exc_str or "404" in exc_str:
+                    write(f"   [~] {task_slug}: no accessible runs yet ({exc_str[:60]}) — skipping.")
                 else:
-                    write(f"   [!] List failed: {exc_str}")
+                    write(f"   [!] List runs failed: {exc_str}")
                 continue
 
-            for fi in run_files:
-                dest = out_dir / Path(fi.file_name).name
+            if not completed_ids:
+                write(f"   [~] {task_slug}: no completed runs yet.")
+                continue
+
+            for run_id in completed_ids:
                 try:
-                    r = requests.get(fi.url, auth=(username, api_key), timeout=60)
-                    r.raise_for_status()
-                    dest.write_bytes(r.content)
-                    all_downloaded.append(dest)
-                    pulled_tasks.add(task_slug)
-                    write(f"   + {Path(fi.file_name).name}")
+                    dl_req = ApiDownloadBenchmarkTaskRunOutputRequest()
+                    dl_req.run_id = run_id
+                    r = tasks_client.download_benchmark_task_run_output(dl_req)
+                    if not r.ok:
+                        write(f"   [!] Run {run_id}: HTTP {r.status_code}")
+                        continue
+                    zf = zipfile.ZipFile(io.BytesIO(r.content))
+                    for name in zf.namelist():
+                        if not name.endswith(".run.json"):
+                            continue
+                        dest = out_dir / name
+                        if dest.exists():
+                            all_downloaded.append(dest)
+                            continue
+                        dest.write_bytes(zf.read(name))
+                        all_downloaded.append(dest)
+                        pulled_tasks.add(task_slug)
+                        write(f"   + {name}")
                 except Exception as exc:
-                    write(f"   [!] Download failed: {exc}")
+                    write(f"   [!] Download run {run_id} failed: {exc}")
 
         if not all_downloaded:
             write("   [!] No files downloaded.")
