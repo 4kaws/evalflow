@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Evalflow · Design Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fira+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+
+:root {
+  --bg:      #0D1117;
+  --surface: #161B22;
+  --border:  #21262D;
+  --text:    #E6EDF3;
+  --muted:   #6E7681;
+  --accent:  #58A6FF;
+  --goose:   #7DC8E8;
+  --ok:      #3FB950;
+  --warn:    #D29922;
+  --fail:    #F85149;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body, #root { height: 100%; overflow: hidden; }
+
+body {
+  font-family: 'Fira Mono', 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── App shell ─────────────────────────────────────── */
+.app      { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+.app-body { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Sidebar ───────────────────────────────────────── */
+.sidebar {
+  width: 222px;
+  min-width: 222px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.sidebar-brand {
+  padding: 16px 14px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+}
+
+.goose-art {
+  font-family: 'Fira Mono', monospace;
+  font-size: 13px;
+  line-height: 1.18;
+  color: var(--goose);
+  white-space: pre;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.brand-text      { display: flex; flex-direction: column; padding-top: 3px; }
+.brand-name      { font-size: 13px; font-weight: 700; color: var(--text); letter-spacing: 0.03em; }
+.brand-ver       { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+.sidebar-nav     { flex: 1; padding: 10px 0; overflow-y: auto; }
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  padding: 7px 14px 7px 12px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  gap: 9px;
+  color: var(--muted);
+  user-select: none;
+}
+.nav-item:hover  { color: var(--text); background: rgba(88,166,255,0.04); }
+.nav-item.active { border-left-color: var(--accent); color: var(--text); }
+
+.nav-key   { font-size: 11px; color: var(--muted); min-width: 13px; text-align: right; flex-shrink: 0; opacity: 0.65; }
+.nav-label { flex: 1; font-size: 13px; }
+.nav-hint  { font-size: 10px; color: var(--muted); opacity: 0.5; }
+
+.sidebar-foot {
+  border-top: 1px solid var(--border);
+  padding: 6px 0;
+}
+
+.nav-sm {
+  display: flex;
+  align-items: center;
+  padding: 5px 14px 5px 12px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  gap: 9px;
+  color: var(--muted);
+  font-size: 12px;
+  user-select: none;
+}
+.nav-sm:hover        { color: var(--text); }
+.nav-sm.danger:hover { color: var(--fail); }
+
+/* ── Main ──────────────────────────────────────────── */
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+  min-width: 0;
+}
+
+.screen { flex: 1; overflow-y: auto; padding: 28px 36px 24px; }
+
+/* ── Page header ───────────────────────────────────── */
+.ph       { margin-bottom: 20px; }
+.ph-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.ph-sub   { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.rule     { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+
+/* ── Status bar ────────────────────────────────────── */
+.statusbar {
+  height: 26px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  flex-shrink: 0;
+}
+.sb-l    { display: flex; align-items: center; gap: 10px; flex: 1; }
+.sb-c    { flex: 1; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 11px; color: var(--muted); }
+.sb-r    { flex: 1; text-align: right; font-size: 11px; color: var(--muted); }
+.sb-pill { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+.dot     { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.sb-sep  { color: var(--border); }
+
+/* ── Keyboard chip ─────────────────────────────────── */
+.kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  background: var(--border);
+  border: 1px solid rgba(110,118,129,0.25);
+  border-radius: 3px;
+  font-size: 11px;
+  color: var(--muted);
+  font-family: 'Fira Mono', monospace;
+  line-height: 1.5;
+}
+
+/* ── Form ──────────────────────────────────────────── */
+.flabel {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+input[type="text"],
+input[type="password"] {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text);
+  font-family: 'Fira Mono', monospace;
+  font-size: 13px;
+  padding: 7px 10px;
+  outline: none;
+}
+input:focus         { border-color: var(--accent); }
+input::placeholder  { color: var(--muted); opacity: 0.4; }
+
+select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text);
+  font-family: 'Fira Mono', monospace;
+  font-size: 12px;
+  padding: 5px 8px;
+  outline: none;
+  cursor: pointer;
+}
+select:focus { border-color: var(--accent); }
+
+/* ── Buttons ───────────────────────────────────────── */
+.btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: 'Fira Mono', monospace;
+  font-size: 12px;
+  padding: 6px 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn-p     { border-color: var(--accent); color: var(--accent); background: rgba(88,166,255,0.06); }
+.btn-p:hover { background: rgba(88,166,255,0.12); }
+.btn-row   { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── Log panel ─────────────────────────────────────── */
+.log {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 12px 14px;
+  font-size: 12px;
+  font-family: 'Fira Mono', monospace;
+  height: 175px;
+  overflow-y: auto;
+  line-height: 1.75;
+}
+.log-line { display: block; color: var(--muted); }
+.log-ok   { color: var(--ok)   !important; }
+.log-fail { color: var(--fail) !important; }
+.log-warn { color: var(--warn) !important; }
+.log-dim  { color: var(--muted); opacity: 0.5; }
+
+/* ── Table ─────────────────────────────────────────── */
+.tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.tbl th {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  padding: 7px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  font-weight: 400;
+}
+.tbl td    { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: top; }
+.tbl tr:hover td { background: rgba(88,166,255,0.025); }
+.tbl tr.sel td   { background: rgba(88,166,255,0.06); }
+
+/* ── Checkbox ──────────────────────────────────────── */
+.cb-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0; cursor: pointer; user-select: none;
+  font-size: 12px; color: var(--text);
+}
+.cb-box {
+  width: 14px; height: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; font-size: 10px; color: var(--accent);
+}
+.cb-box.on { border-color: var(--accent); }
+
+/* ── Section label ─────────────────────────────────── */
+.slabel { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 9px; }
+
+/* ── Stats ─────────────────────────────────────────── */
+.stats  { background: var(--surface); border: 1px solid var(--border); padding: 14px 16px; display: flex; gap: 28px; flex-wrap: wrap; }
+.stat-l { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 2px; }
+.stat-v { font-size: 22px; font-weight: 700; color: var(--text); }
+
+/* ── Toggle ────────────────────────────────────────── */
+.tog {
+  padding: 5px 12px; border: 1px solid var(--border);
+  font-size: 12px; cursor: pointer; color: var(--muted);
+  background: var(--bg); font-family: 'Fira Mono', monospace;
+}
+.tog.on { border-color: var(--accent); color: var(--accent); background: rgba(88,166,255,0.06); }
+
+/* ── Diff dots ─────────────────────────────────────── */
+.diff-dots { display: flex; gap: 3px; flex-wrap: wrap; max-width: 130px; }
+.dd-p      { color: var(--ok);   font-size: 10px; }
+.dd-f      { color: var(--fail); font-size: 10px; }
+
+/* ── Help overlay ──────────────────────────────────── */
+.ov-bg {
+  position: fixed; inset: 0;
+  background: rgba(13,17,23,0.82);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+}
+.ov-panel {
+  background: var(--surface); border: 1px solid var(--border);
+  width: 700px; max-width: 95vw; max-height: 85vh;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.ov-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  padding: 20px 24px 16px; border-bottom: 1px solid var(--border);
+}
+.ov-title { font-size: 14px; font-weight: 700; color: var(--text); }
+.ov-sub   { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.ov-close {
+  background: var(--border); border: 1px solid var(--border); border-radius: 3px;
+  color: var(--muted); font-family: 'Fira Mono', monospace;
+  font-size: 11px; padding: 2px 8px; cursor: pointer;
+}
+.ov-close:hover { border-color: var(--accent); color: var(--accent); }
+.ov-body  {
+  padding: 20px 24px; overflow-y: auto;
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px;
+}
+.hg-title {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--muted); margin-bottom: 10px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.kb-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 7px; font-size: 12px; }
+.kb-k   { min-width: 64px; flex-shrink: 0; }
+.kb-d   { color: var(--muted); }
+.ov-foot { padding: 11px 24px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+
+/* ── Setup wizard ──────────────────────────────────── */
+.wiz-bg {
+  position: fixed; inset: 0; background: var(--bg);
+  display: flex; align-items: center; justify-content: center; z-index: 200;
+}
+.wiz-card {
+  background: var(--surface); border: 1px solid var(--border);
+  width: 540px; max-width: 95vw; max-height: 90vh;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.wiz-prog { display: flex; align-items: center; gap: 6px; padding: 16px 28px 0; }
+.wiz-dot  { width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
+.wiz-dot.act  { background: var(--accent); }
+.wiz-dot.done { background: var(--ok); }
+.wiz-body  { flex: 1; padding: 26px 36px; overflow-y: auto; }
+.wiz-goose {
+  font-family: 'Fira Mono', monospace; font-size: 28px; line-height: 1.15;
+  color: var(--goose); white-space: pre; text-align: center; margin-bottom: 22px;
+}
+.wiz-title { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+.wiz-sub   { font-size: 12px; color: var(--muted); line-height: 1.65; margin-bottom: 22px; }
+.fg        { margin-bottom: 16px; }
+.wiz-foot  {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 36px 22px; border-top: 1px solid var(--border);
+}
+.skip { font-size: 11px; color: var(--muted); cursor: pointer; background: none; border: none; font-family: 'Fira Mono', monospace; }
+.skip:hover { color: var(--text); }
+.wiz-nav   { display: flex; gap: 8px; }
+.done-box  { border: 1px solid var(--border); background: var(--bg); padding: 14px 16px; font-size: 12px; line-height: 2; margin-top: 14px; }
+
+/* ── Scrollbars ────────────────────────────────────── */
+::-webkit-scrollbar       { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const { useState, useEffect } = React;
+
+const GOOSE = ` ▄██\n▄███\n████▀\n ▌ ▌`;
+const VER   = "0.2.0";
+
+const NAV = [
+  { id:"pull",        label:"Pull",        key:"1", hint:"download runs"   },
+  { id:"results",     label:"Results",     key:"2", hint:"browse outputs"  },
+  { id:"leaderboard", label:"Leaderboard", key:"3", hint:"model ranking"   },
+  { id:"merge",       label:"Merge",       key:"4", hint:"build datasets"  },
+  { id:"publish",     label:"Publish",     key:"5", hint:"upload to kaggle"},
+  { id:"monitor",     label:"Monitor",     key:"6", hint:"daily watchers"  },
+];
+
+// ── Primitives ─────────────────────────────────────────────────────────────
+
+function Kbd({ c }) { return <span className="kbd">{c}</span>; }
+
+function PH({ title, sub }) {
+  return (
+    <div className="ph">
+      <div className="ph-title">{title}</div>
+      {sub && <div className="ph-sub">{sub}</div>}
+      <hr className="rule" />
+    </div>
+  );
+}
+
+function LogPanel({ lines }) {
+  return (
+    <div className="log">
+      {lines.map((l, i) => <span key={i} className={`log-line ${l.cls||""}`}>{l.t}</span>)}
+    </div>
+  );
+}
+
+function CB({ label, on, toggle }) {
+  return (
+    <div className="cb-row" onClick={toggle}>
+      <div className={`cb-box ${on?"on":""}`}>{on?"✓":""}</div>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+// ── Pull ───────────────────────────────────────────────────────────────────
+
+const PULL_LOG = [
+  {t:"» enter benchmark slug and press Pull"},
+  {t:""},
+  {cls:"log-ok",  t:"[ok] benchmark located: 4kaws/llm-reasoning-v2"},
+  {t:"       strategy 1: leaderboard API"},
+  {cls:"log-ok",  t:"[ok] 4 tasks discovered"},
+  {cls:"log-dim", t:"       4kaws/reasoning-task-arithmetic"},
+  {cls:"log-dim", t:"       4kaws/reasoning-task-logic"},
+  {cls:"log-dim", t:"       4kaws/reasoning-task-coding"},
+  {cls:"log-dim", t:"       4kaws/reasoning-task-science"},
+  {t:""},
+  {cls:"log-ok",  t:"[ok] reasoning-task-arithmetic  →  4 run files"},
+  {cls:"log-ok",  t:"[ok] reasoning-task-logic        →  4 run files"},
+  {cls:"log-ok",  t:"[ok] reasoning-task-coding       →  4 run files"},
+  {cls:"log-ok",  t:"[ok] reasoning-task-science      →  4 run files"},
+  {t:""},
+  {cls:"log-ok",  t:"»  16 files pulled  →  outputs/"},
+];
+
+function PullScreen() {
+  const [slug, setSlug] = useState("4kaws/llm-reasoning-v2");
+  const [done, setDone] = useState(true);
+  return (
+    <div className="screen">
+      <PH title="Pull" sub="Auto-discover and download all tasks from a Kaggle benchmark." />
+      <div className="slabel">Benchmark slug</div>
+      <div style={{display:"flex",gap:8,marginBottom:22,maxWidth:520}}>
+        <input type="text" value={slug} onChange={e=>setSlug(e.target.value)} placeholder="username/benchmark-name" />
+        <button className="btn btn-p" onClick={()=>setDone(true)}>Pull</button>
+      </div>
+      <div className="slabel" style={{marginBottom:8}}>Output</div>
+      <LogPanel lines={done ? PULL_LOG : [{t:"ready — enter a slug and pull"}]} />
+      {done && (
+        <div style={{marginTop:11,fontSize:11,color:"var(--muted)"}}>
+          <span style={{color:"var(--ok)"}}>16 files</span> pulled into{" "}
+          <span style={{color:"var(--text)"}}>outputs/</span>
+          {" · "}switch to <Kbd c="2" /> Results to inspect
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Results ────────────────────────────────────────────────────────────────
+
+const ROWS = [
+  {model:"google/gemma-2-9b-it",            task:"arithmetic", score:1, resp:"The answer is 42. Step 1: multiply 6×7=42."},
+  {model:"meta/llama-3.1-8b-instruct",       task:"arithmetic", score:1, resp:"42. Calculation: 6 multiplied by 7 equals 42."},
+  {model:"anthropic/claude-haiku-3",          task:"arithmetic", score:1, resp:"42 — let me work through this: 6 × 7 = 42."},
+  {model:"mistralai/mistral-7b-instruct-v3",  task:"arithmetic", score:0, resp:"The result is 48. I calculated 6+7+5+30=48."},
+  {model:"google/gemma-2-9b-it",            task:"logic",      score:1, resp:"True. All mammals are warm-blooded, and whales are mammals."},
+  {model:"meta/llama-3.1-8b-instruct",       task:"logic",      score:0, resp:"False. Whales are fish and fish are cold-blooded."},
+  {model:"anthropic/claude-haiku-3",          task:"logic",      score:1, resp:"True. Whales are mammals, and all mammals are warm-blooded."},
+  {model:"mistralai/mistral-7b-instruct-v3",  task:"logic",      score:1, resp:"True — mammals including whales maintain body temperature."},
+  {model:"google/gemma-2-9b-it",            task:"coding",     score:1, resp:"def fib(n): return n if n<=1 else fib(n-1)+fib(n-2)"},
+  {model:"meta/llama-3.1-8b-instruct",       task:"coding",     score:0, resp:"def fib(n):\n    if n==0: return 1\n    return fib(n-1)+n"},
+  {model:"anthropic/claude-haiku-3",          task:"coding",     score:1, resp:"def fibonacci(n):\n    if n<=1: return n\n    return fibonacci(n-1)+fibonacci(n-2)"},
+  {model:"mistralai/mistral-7b-instruct-v3",  task:"coding",     score:1, resp:"def fib(n):\n    a,b=0,1\n    for _ in range(n): a,b=b,a+b\n    return a"},
+  {model:"google/gemma-2-9b-it",            task:"science",    score:1, resp:"Water boils at 100°C at standard atmospheric pressure."},
+  {model:"meta/llama-3.1-8b-instruct",       task:"science",    score:1, resp:"100°C or 212°F at 1 atm (101.325 kPa)."},
+  {model:"anthropic/claude-haiku-3",          task:"science",    score:1, resp:"100 degrees Celsius (212°F) at standard pressure."},
+  {model:"mistralai/mistral-7b-instruct-v3",  task:"science",    score:0, resp:"Water boils at 90°C. At higher altitude it's even lower."},
+];
+const MODELS = [...new Set(ROWS.map(r=>r.model))];
+
+function ResultsScreen() {
+  const [mf, setMf] = useState("all");
+  const [sf, setSf] = useState("all");
+  const rows = ROWS.filter(r=>{
+    if (mf!=="all" && r.model!==mf) return false;
+    if (sf==="pass" && r.score!==1) return false;
+    if (sf==="fail" && r.score!==0) return false;
+    return true;
+  });
+  return (
+    <div className="screen">
+      <PH title="Results" sub="Browse pulled run outputs. Filter by model or pass/fail score." />
+      <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:16}}>
+        <select value={mf} onChange={e=>setMf(e.target.value)}>
+          <option value="all">all models</option>
+          {MODELS.map(m=><option key={m} value={m}>{m}</option>)}
+        </select>
+        <select value={sf} onChange={e=>setSf(e.target.value)}>
+          <option value="all">all scores</option>
+          <option value="pass">pass</option>
+          <option value="fail">fail</option>
+        </select>
+        <span style={{fontSize:11,color:"var(--muted)",marginLeft:4}}>{rows.length}/{ROWS.length} rows</span>
+      </div>
+      <table className="tbl">
+        <thead>
+          <tr><th>Model</th><th>Task</th><th>Score</th><th>Response preview</th></tr>
+        </thead>
+        <tbody>
+          {rows.map((r,i)=>(
+            <tr key={i}>
+              <td style={{color:"var(--muted)",fontSize:11,whiteSpace:"nowrap"}}>{r.model}</td>
+              <td style={{color:"var(--muted)",fontSize:11}}>{r.task}</td>
+              <td>{r.score===1
+                ? <span style={{color:"var(--ok)",fontSize:11}}>● pass</span>
+                : <span style={{color:"var(--fail)",fontSize:11}}>● fail</span>}
+              </td>
+              <td style={{color:"var(--muted)",fontSize:11,maxWidth:300}}>
+                {r.resp.length>72?r.resp.slice(0,72)+"…":r.resp}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Leaderboard ────────────────────────────────────────────────────────────
+
+const LB = [
+  {rank:1, model:"anthropic/claude-haiku-3",          acc:93.8, pass:15, fail:1,  diff:[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0]},
+  {rank:2, model:"google/gemma-2-9b-it",            acc:87.5, pass:14, fail:2,  diff:[1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0]},
+  {rank:3, model:"meta/llama-3.1-8b-instruct",       acc:75.0, pass:12, fail:4,  diff:[1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0]},
+  {rank:4, model:"mistralai/mistral-7b-instruct-v3",  acc:68.8, pass:11, fail:5,  diff:[1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0]},
+];
+
+function LeaderboardScreen() {
+  return (
+    <div className="screen">
+      <PH title="Leaderboard" sub="Cross-model accuracy ranking. Per-question pass/fail diff." />
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th style={{width:36}}>#</th>
+            <th>Model</th>
+            <th style={{width:84}}>Accuracy</th>
+            <th style={{width:55}}>Pass</th>
+            <th style={{width:55}}>Fail</th>
+            <th>Per-question diff</th>
+          </tr>
+        </thead>
+        <tbody>
+          {LB.map(r=>(
+            <tr key={r.rank}>
+              <td style={{color:"var(--muted)"}}>{r.rank}</td>
+              <td style={{fontSize:12}}>{r.model}</td>
+              <td>
+                <span style={{color:r.acc>=90?"var(--ok)":r.acc>=75?"var(--warn)":"var(--fail)"}}>
+                  {r.acc}%
+                </span>
+              </td>
+              <td><span style={{color:"var(--ok)",fontSize:12}}>{r.pass}</span></td>
+              <td><span style={{color:"var(--fail)",fontSize:12}}>{r.fail}</span></td>
+              <td>
+                <div className="diff-dots">
+                  {r.diff.map((d,i)=><span key={i} className={d?"dd-p":"dd-f"}>{d?"●":"○"}</span>)}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{marginTop:20,fontSize:11,color:"var(--muted)"}}>
+        ● pass  ○ fail  ·  16 questions across 4 tasks
+      </div>
+    </div>
+  );
+}
+
+// ── Merge ──────────────────────────────────────────────────────────────────
+
+const RUN_FILES = [
+  "arithmetic__google__gemma-2-9b-it.run.json",
+  "arithmetic__meta__llama-3.1-8b-instruct.run.json",
+  "arithmetic__anthropic__claude-haiku-3.run.json",
+  "arithmetic__mistralai__mistral-7b-instruct-v3.run.json",
+  "logic__google__gemma-2-9b-it.run.json",
+  "logic__meta__llama-3.1-8b-instruct.run.json",
+  "logic__anthropic__claude-haiku-3.run.json",
+  "logic__mistralai__mistral-7b-instruct-v3.run.json",
+  "coding__google__gemma-2-9b-it.run.json",
+  "coding__meta__llama-3.1-8b-instruct.run.json",
+  "coding__anthropic__claude-haiku-3.run.json",
+  "coding__mistralai__mistral-7b-instruct-v3.run.json",
+  "science__google__gemma-2-9b-it.run.json",
+  "science__meta__llama-3.1-8b-instruct.run.json",
+  "science__anthropic__claude-haiku-3.run.json",
+  "science__mistralai__mistral-7b-instruct-v3.run.json",
+];
+
+const MERGE_LOG = [
+  {t:"Merging 16 file(s) into outputs/"},
+  {t:""},
+  {cls:"log-ok",  t:"[ok] evalflow_sft.csv          — 58 rows (passing only)"},
+  {cls:"log-ok",  t:"[ok] evalflow_preferences.csv  — 24 preference pairs"},
+  {cls:"log-ok",  t:"[ok] .parquet variants written  (HuggingFace-ready)"},
+  {t:""},
+  {t:"     -  0 duplicate rows removed"},
+  {t:""},
+  {t:"»  Saved to outputs/"},
+  {cls:"log-dim", t:"   Switch to Publish tab to upload."},
+];
+
+function MergeScreen() {
+  const [checked, setChecked] = useState(new Set(RUN_FILES));
+  const [dedup,   setDedup]   = useState(true);
+  const [passing, setPassing] = useState(true);
+  const [merged,  setMerged]  = useState(true);
+  const toggle = f => { const n=new Set(checked); n.has(f)?n.delete(f):n.add(f); setChecked(n); };
+  return (
+    <div className="screen">
+      <PH title="Merge" sub="Combine pulled runs into SFT and DPO preference datasets." />
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:32}}>
+        <div>
+          <div className="slabel" style={{marginBottom:8}}>Select files</div>
+          <div style={{border:"1px solid var(--border)",background:"var(--bg)",padding:"10px 12px",maxHeight:218,overflowY:"auto",marginBottom:14}}>
+            {RUN_FILES.map(f=>(
+              <CB key={f} label={f.replace(".run.json","")} on={checked.has(f)} toggle={()=>toggle(f)} />
+            ))}
+          </div>
+          <div className="btn-row" style={{marginBottom:14}}>
+            <button className="btn btn-p" onClick={()=>setMerged(true)}>Merge selected</button>
+            <button className="btn">Refresh</button>
+            <button className="btn" onClick={()=>setChecked(new Set(RUN_FILES))}>Select all</button>
+          </div>
+          <CB label="Remove duplicate rows" on={dedup} toggle={()=>setDedup(v=>!v)} />
+          <div style={{marginTop:2}}>
+            <CB label="SFT: passing responses only  (recommended)" on={passing} toggle={()=>setPassing(v=>!v)} />
+          </div>
+        </div>
+        <div>
+          <div className="slabel" style={{marginBottom:8}}>Merge log</div>
+          <LogPanel lines={merged ? MERGE_LOG : [{t:"select files and click Merge selected"}]} />
+          {merged && (
+            <div className="stats" style={{marginTop:12}}>
+              <div><div className="stat-l">SFT rows</div><div className="stat-v">58</div></div>
+              <div><div className="stat-l">Pref pairs</div><div className="stat-v">24</div></div>
+              <div><div className="stat-l">Models</div><div className="stat-v">4</div></div>
+              <div><div className="stat-l">Tasks</div><div className="stat-v">4</div></div>
+              <div><div className="stat-l">Avg acc</div><div className="stat-v">81%</div></div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Publish ────────────────────────────────────────────────────────────────
+
+const PUB_LOG = [
+  {t:"Uploading to Kaggle Datasets…"},
+  {t:""},
+  {cls:"log-ok", t:"[ok] created dataset: 4kaws/llm-reasoning-v2-results"},
+  {cls:"log-ok", t:"[ok] evalflow_sft.csv          uploaded  (58 rows, 124 KB)"},
+  {cls:"log-ok", t:"[ok] evalflow_preferences.csv  uploaded  (24 rows,  38 KB)"},
+  {cls:"log-ok", t:"[ok] evalflow_sft.parquet      uploaded"},
+  {cls:"log-ok", t:"[ok] evalflow_preferences.parquet uploaded"},
+  {t:""},
+  {t:"»  Dataset live: kaggle.com/datasets/4kaws/llm-reasoning-v2-results"},
+];
+
+function PublishScreen() {
+  const [slug,  setSlug]  = useState("llm-reasoning-v2-results");
+  const [title, setTitle] = useState("LLM Reasoning Benchmark v2 Results");
+  const [mode,  setMode]  = useState("create");
+  const [done,  setDone]  = useState(true);
+  return (
+    <div className="screen">
+      <PH title="Publish" sub="Upload merged datasets to Kaggle Datasets." />
+      <div style={{maxWidth:460}}>
+        <div className="fg">
+          <div className="flabel">Dataset slug</div>
+          <input type="text" value={slug} onChange={e=>setSlug(e.target.value)} placeholder="my-benchmark-results" />
+        </div>
+        <div className="fg">
+          <div className="flabel">Dataset title</div>
+          <input type="text" value={title} onChange={e=>setTitle(e.target.value)} placeholder="My Benchmark Results" />
+        </div>
+        <div style={{marginBottom:18}}>
+          <div className="slabel" style={{marginBottom:8}}>Publish mode</div>
+          <div style={{display:"flex",gap:8}}>
+            <button className={`tog ${mode==="create"?"on":""}`} onClick={()=>setMode("create")}>First publish</button>
+            <button className={`tog ${mode==="update"?"on":""}`} onClick={()=>setMode("update")}>Update existing</button>
+          </div>
+        </div>
+        <div className="btn-row" style={{marginBottom:22}}>
+          <button className="btn btn-p" onClick={()=>setDone(true)}>Publish</button>
+        </div>
+      </div>
+      <div className="slabel" style={{marginBottom:8}}>Output</div>
+      <LogPanel lines={done ? PUB_LOG : [{t:"configure options and publish"}]} />
+    </div>
+  );
+}
+
+// ── Monitor ────────────────────────────────────────────────────────────────
+
+const WATCHERS = [
+  {slug:"4kaws/llm-reasoning-v2",    ds:"4kaws/llm-reasoning-v2-results",   last:"2026-05-24 09:00", st:"ok",   n:16},
+  {slug:"4kaws/code-eval-benchmark",  ds:"4kaws/code-eval-results",           last:"2026-05-24 09:01", st:"ok",   n:8},
+  {slug:"4kaws/math-benchmark-2025",  ds:"4kaws/math-benchmark-2025-results", last:"2026-05-23 09:00", st:"warn", n:4},
+];
+
+function MonitorScreen() {
+  const [sel,   setSel]   = useState(0);
+  const [sched, setSched] = useState("09:00");
+  const w = WATCHERS[sel];
+  return (
+    <div className="screen">
+      <PH title="Monitor" sub="Watch benchmarks for new tasks. Runs daily on GitHub Actions." />
+      <table className="tbl" style={{marginBottom:24}}>
+        <thead>
+          <tr><th>Benchmark slug</th><th>Dataset</th><th>Last check</th><th style={{width:55}}>Tasks</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {WATCHERS.map((w,i)=>(
+            <tr key={i} className={sel===i?"sel":""} onClick={()=>setSel(i)} style={{cursor:"pointer"}}>
+              <td style={{fontSize:12}}>{w.slug}</td>
+              <td style={{fontSize:11,color:"var(--muted)"}}>{w.ds}</td>
+              <td style={{fontSize:11,color:"var(--muted)"}}>{w.last}</td>
+              <td style={{fontSize:12}}>{w.n}</td>
+              <td style={{fontSize:11}}>
+                {w.st==="ok"
+                  ? <span style={{color:"var(--ok)"}}>● up to date</span>
+                  : <span style={{color:"var(--warn)"}}>⚠ new tasks found</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:32}}>
+        <div>
+          <div className="slabel" style={{marginBottom:12}}>Add / edit watcher</div>
+          <div className="fg">
+            <div className="flabel">Benchmark slug</div>
+            <input key={sel+"s"} type="text" defaultValue={w.slug} placeholder="username/benchmark-name" />
+          </div>
+          <div className="fg">
+            <div className="flabel">Dataset slug</div>
+            <input key={sel+"d"} type="text" defaultValue={w.ds} placeholder="username/dataset-name" />
+          </div>
+          <div className="fg">
+            <div className="flabel">Dataset title</div>
+            <input type="text" defaultValue="LLM Reasoning Benchmark Results" placeholder="My Benchmark Results" />
+          </div>
+          <CB label="Auto-publish after pull" on={true} toggle={()=>{}} />
+          <div className="btn-row" style={{marginTop:12}}>
+            <button className="btn btn-p">Save watcher</button>
+          </div>
+        </div>
+        <div>
+          <div className="slabel" style={{marginBottom:12}}>Actions</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:18}}>
+            {["Check all now","Check selected","Force republish","Reset & re-pull"].map(a=>(
+              <button key={a} className="btn" style={{justifyContent:"flex-start",width:196}}>{a}</button>
+            ))}
+          </div>
+          <hr className="rule" />
+          <div className="slabel" style={{marginBottom:8}}>Daily schedule (GitHub Actions)</div>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <input type="text" value={sched} onChange={e=>setSched(e.target.value)} style={{width:80}} placeholder="HH:MM" />
+            <button className="btn btn-p">Save &amp; push</button>
+          </div>
+          <div style={{marginTop:8,fontSize:11,color:"var(--muted)"}}>
+            Runs on GitHub servers · machine can be off
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Help overlay ───────────────────────────────────────────────────────────
+
+function HelpOverlay({ open, onClose }) {
+  useEffect(()=>{
+    if (!open) return;
+    const h = e=>{ if(e.key==="Escape") onClose(); };
+    window.addEventListener("keydown", h);
+    return ()=>window.removeEventListener("keydown", h);
+  }, [open, onClose]);
+  if (!open) return null;
+  const R = ({k, d}) => (
+    <div className="kb-row">
+      <div className="kb-k">{k && <Kbd c={k} />}</div>
+      <div className="kb-d">{d}</div>
+    </div>
+  );
+  return (
+    <div className="ov-bg" onClick={onClose}>
+      <div className="ov-panel" onClick={e=>e.stopPropagation()}>
+        <div className="ov-head">
+          <div>
+            <div className="ov-title">Keyboard reference</div>
+            <div className="ov-sub">Every action in evalflow is keyboard-first.</div>
+          </div>
+          <button className="ov-close" onClick={onClose}>esc</button>
+        </div>
+        <div className="ov-body">
+          <div>
+            <div className="hg-title">Navigation</div>
+            <R k="1 – 6" d="switch tab" />
+            <R k="?"     d="open / close help" />
+            <R k="w"     d="re-open setup wizard" />
+            <R k="q"     d="quit evalflow" />
+            <R k="Esc"   d="unfocus field" />
+          </div>
+          <div>
+            <div className="hg-title">Within a page</div>
+            <R k="↑ / ↓"  d="move between fields" />
+            <R k="← / →"  d="cycle action buttons" />
+            <R k="⏎"      d="confirm / activate" />
+            <R k="Ctrl+R" d="refresh data" />
+            <R k="Ctrl+A" d="select all (Merge)" />
+          </div>
+          <div>
+            <div className="hg-title">Workflow</div>
+            <R d="1 · Pull → slug → ⏎" />
+            <R d="2 · Results → inspect" />
+            <R d="3 · Leaderboard → rank" />
+            <R d="4 · Merge → SFT + DPO" />
+            <R d="5 · Publish → Kaggle" />
+            <R d="6 · Monitor → schedule" />
+          </div>
+        </div>
+        <div className="ov-foot">Press <Kbd c="?" /> or <Kbd c="esc" /> to dismiss.</div>
+      </div>
+    </div>
+  );
+}
+
+// ── Setup wizard ───────────────────────────────────────────────────────────
+
+const WIZ_STEPS = ["welcome","kaggle","github","done"];
+
+function Wizard({ onClose }) {
+  const [step, setStep] = useState(0);
+  const [v, setV] = useState({ku:"",kk:"",gt:"",gr:""});
+  const set = k => e => setV(x=>({...x,[k]:e.target.value}));
+  return (
+    <div className="wiz-bg">
+      <div className="wiz-card">
+        <div className="wiz-prog">
+          {WIZ_STEPS.map((_,i)=>(
+            <div key={i} className={`wiz-dot ${i<step?"done":i===step?"act":""}`} />
+          ))}
+        </div>
+
+        <div className="wiz-body">
+          {step===0 && <>
+            <div className="wiz-goose">{` ▄██\n▄███\n████▀\n ▌ ▌`}</div>
+            <div className="wiz-title">Welcome to evalflow</div>
+            <div className="wiz-sub">
+              evalflow pulls Kaggle Community Benchmark results, merges them into SFT and DPO
+              preference datasets, and publishes them to Kaggle Datasets — all from the terminal.
+              <br /><br />
+              This wizard collects your credentials. You'll need:<br />
+              · Kaggle username + legacy API key<br />
+              · GitHub fine-grained PAT for the daily schedule sync
+            </div>
+          </>}
+
+          {step===1 && <>
+            <div className="wiz-title">Kaggle credentials</div>
+            <div className="wiz-sub">
+              Get your key at:{" "}
+              <span style={{color:"var(--accent)"}}>kaggle.com → Settings → API → Legacy API Credentials</span>
+            </div>
+            <div className="fg">
+              <div className="flabel">Kaggle username</div>
+              <input type="text" value={v.ku} onChange={set("ku")} placeholder="your-kaggle-username" />
+            </div>
+            <div className="fg">
+              <div className="flabel">Legacy API key</div>
+              <input type="password" value={v.kk} onChange={set("kk")} placeholder="●●●●●●●●●●●●●●●●" />
+            </div>
+          </>}
+
+          {step===2 && <>
+            <div className="wiz-title">GitHub token</div>
+            <div className="wiz-sub">
+              Needed to push the daily schedule to GitHub Actions. Create a fine-grained PAT at{" "}
+              <span style={{color:"var(--accent)"}}>github.com → Settings → Developer settings → Fine-grained tokens</span>
+              {" "}with <strong style={{color:"var(--text)"}}>Secrets: read & write</strong> permission.
+            </div>
+            <div className="fg">
+              <div className="flabel">GitHub PAT</div>
+              <input type="password" value={v.gt} onChange={set("gt")} placeholder="github_pat_●●●●●●●●●●●●" />
+            </div>
+            <div className="fg">
+              <div className="flabel">Repository (owner/repo)</div>
+              <input type="text" value={v.gr} onChange={set("gr")} placeholder="your-username/evalflow" />
+            </div>
+          </>}
+
+          {step===3 && <>
+            <div className="wiz-title" style={{color:"var(--ok)"}}>All set.</div>
+            <div className="wiz-sub">Credentials saved to .env</div>
+            <div className="done-box">
+              <div><span style={{color:"var(--muted)"}}>KAGGLE_USERNAME  </span>= <span style={{color:"var(--text)"}}>{v.ku||"your-username"}</span></div>
+              <div><span style={{color:"var(--muted)"}}>KAGGLE_KEY       </span>= <span style={{color:"var(--text)"}}>{"●".repeat(16)}</span></div>
+              <div><span style={{color:"var(--muted)"}}>GITHUB_TOKEN     </span>= <span style={{color:"var(--text)"}}>{"●".repeat(16)}</span></div>
+              <div><span style={{color:"var(--muted)"}}>GITHUB_REPO      </span>= <span style={{color:"var(--text)"}}>{v.gr||"your-username/evalflow"}</span></div>
+            </div>
+            <div style={{marginTop:14,fontSize:11,color:"var(--muted)"}}>
+              Press <Kbd c="w" /> at any time to re-open this wizard.
+            </div>
+          </>}
+        </div>
+
+        <div className="wiz-foot">
+          <button className="skip" onClick={onClose}>{step<3?"skip →":""}</button>
+          <div className="wiz-nav">
+            {step>0 && <button className="btn" onClick={()=>setStep(s=>s-1)}>← Back</button>}
+            {step<3
+              ? <button className="btn btn-p" onClick={()=>setStep(s=>s+1)}>
+                  {step===0?"Get started →":"Next →"}
+                </button>
+              : <button className="btn btn-p" onClick={onClose}>Launch evalflow →</button>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── App shell ──────────────────────────────────────────────────────────────
+
+const SCREENS = {
+  pull: PullScreen, results: ResultsScreen, leaderboard: LeaderboardScreen,
+  merge: MergeScreen, publish: PublishScreen, monitor: MonitorScreen,
+};
+
+function Sidebar({ active, onSelect, onHelp, onWizard }) {
+  return (
+    <aside className="sidebar">
+      <div className="sidebar-brand">
+        <pre className="goose-art">{GOOSE}</pre>
+        <div className="brand-text">
+          <div className="brand-name">evalflow</div>
+          <div className="brand-ver">v{VER}</div>
+        </div>
+      </div>
+      <nav className="sidebar-nav">
+        {NAV.map(n=>(
+          <div key={n.id} className={`nav-item ${active===n.id?"active":""}`} onClick={()=>onSelect(n.id)}>
+            <span className="nav-key">{n.key}</span>
+            <span className="nav-label">{n.label}</span>
+            <span className="nav-hint">{n.hint}</span>
+          </div>
+        ))}
+      </nav>
+      <div className="sidebar-foot">
+        <div className="nav-sm" onClick={onHelp}><span className="nav-key">?</span><span>Help</span></div>
+        <div className="nav-sm" onClick={onWizard}><span className="nav-key">w</span><span>Setup wizard</span></div>
+        <div className="nav-sm danger"><span className="nav-key">q</span><span>Quit</span></div>
+      </div>
+    </aside>
+  );
+}
+
+function StatusBar({ active }) {
+  const view = NAV.find(n=>n.id===active);
+  return (
+    <div className="statusbar">
+      <div className="sb-l">
+        <div className="sb-pill"><span className="dot" style={{background:"var(--ok)"}} />kaggle · authenticated</div>
+        <span className="sb-sep">·</span>
+        <div className="sb-pill"><span className="dot" style={{background:"var(--ok)"}} />github · linked</div>
+        <span className="sb-sep">·</span>
+        <span style={{fontSize:11,color:"var(--muted)",opacity:0.5}}>outputs/ · 16 run files</span>
+      </div>
+      <div className="sb-c">
+        <span><Kbd c="1" />–<Kbd c="6" /> tabs</span>
+        <span><Kbd c="↑" /><Kbd c="↓" /> navigate</span>
+        <span><Kbd c="?" /> help</span>
+        <span><Kbd c="q" /> quit</span>
+      </div>
+      <div className="sb-r">evalflow · {view?.label}</div>
+    </div>
+  );
+}
+
+function App() {
+  const [active, setActive] = useState("pull");
+  const [help,   setHelp]   = useState(false);
+  const [wizard, setWizard] = useState(false);
+
+  useEffect(()=>{
+    const h = e => {
+      if (/(INPUT|TEXTAREA|SELECT)/.test(e.target?.tagName)) return;
+      if (e.key==="?")      { setHelp(x=>!x); return; }
+      if (e.key==="Escape") { setHelp(false); setWizard(false); return; }
+      if (e.key==="w")      { setWizard(true); return; }
+      const n = NAV.find(x=>x.key===e.key);
+      if (n) setActive(n.id);
+    };
+    window.addEventListener("keydown", h);
+    return ()=>window.removeEventListener("keydown", h);
+  }, []);
+
+  const Screen = SCREENS[active];
+
+  return (
+    <div className="app">
+      <div className="app-body">
+        <Sidebar active={active} onSelect={setActive} onHelp={()=>setHelp(true)} onWizard={()=>setWizard(true)} />
+        <main className="main">
+          <Screen key={active} />
+          <StatusBar active={active} />
+        </main>
+      </div>
+      <HelpOverlay open={help} onClose={()=>setHelp(false)} />
+      {wizard && <Wizard onClose={()=>setWizard(false)} />}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
