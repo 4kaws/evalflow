@@ -389,12 +389,15 @@ class RunView(Vertical):
             self.app.call_from_thread(_apply)
 
         except Exception as exc:
-            self.app.call_from_thread(
-                lambda: log.write_line(
-                    f"[x] Failed to list tasks: {exc}\n"
-                    "    → Enter your task slug manually in the field below the table."
+            exc_str = str(exc)
+            if "404" in exc_str:
+                msg = (
+                    "[!] Task listing API not available for this Kaggle account.\n"
+                    "    → Enter your task slug manually below (owner/task-slug)."
                 )
-            )
+            else:
+                msg = f"[x] Failed to list tasks: {exc_str}\n    → Enter slug manually below."
+            self.app.call_from_thread(lambda m=msg: log.write_line(m))
 
     @work(thread=True)
     def _load_models(self) -> None:
@@ -501,9 +504,15 @@ class RunView(Vertical):
             self.app.call_from_thread(_apply)
 
         except Exception as exc:
-            self.app.call_from_thread(
-                lambda: log.write_line(f"[x] Failed to load runs: {exc}")
-            )
+            exc_str = str(exc)
+            if "404" in exc_str:
+                msg = (
+                    f"[x] Run listing API not available for this account.\n"
+                    f"    → View runs on the web via 'Open Benchmark on Kaggle'."
+                )
+            else:
+                msg = f"[x] Failed to load runs: {exc_str}"
+            self.app.call_from_thread(lambda m=msg: log.write_line(m))
 
     @work(thread=True)
     def _do_schedule(self) -> None:
@@ -554,9 +563,19 @@ class RunView(Vertical):
             self.app.call_from_thread(_finish)
 
         except Exception as exc:
-            self.app.call_from_thread(
-                lambda: log.write_line(f"[x] Schedule failed: {exc}")
-            )
+            exc_str = str(exc)
+            if "404" in exc_str:
+                owner, tname = (task_slug.split("/", 1) + [""])[:2]
+                url = f"https://www.kaggle.com/benchmarks/tasks/{owner}/{tname}"
+                msg = (
+                    f"[x] Scheduling API not available for this account (Kaggle restricts\n"
+                    f"    BenchmarkTasksApiService to internal/special accounts).\n"
+                    f"    → Schedule runs on the web: {url}\n"
+                    f"      Click 'Open Benchmark on Kaggle' or copy the URL above."
+                )
+            else:
+                msg = f"[x] Schedule failed: {exc_str}"
+            self.app.call_from_thread(lambda m=msg: log.write_line(m))
 
     # ------------------------------------------------------------------ #
     #  Auth helper                                                         #
