@@ -597,6 +597,9 @@ class PullView(Vertical):
                         log.write_line(f"   (scanning {owner}'s notebooks to resolve task slug…)")
                         km = self._build_kernel_map(kag_client, owner, log)
                     hit = km.get(task_slug)
+                    if not hit:
+                        _, slug_part = task_slug.split("/", 1)
+                        hit = km.get(f"{owner}/{slug_part.replace('-', '')}")
                     if hit:
                         log.write_line(f"   (found matching notebook: {owner}/{hit})")
                         return self._pull_one_task_kernels(
@@ -709,8 +712,20 @@ class PullView(Vertical):
                         prefix = fname.split("-run_id_")[0]
                     else:
                         prefix = fname[: -len(".run.json")]
-                    derived = prefix.lower().replace("_", "-").rstrip("-")
-                    task_map[f"{owner}/{derived}"] = k_slug
+                    import re as _re, unicodedata as _ud
+                    raw = prefix.lower().replace("_", "-")
+                    # Universal diacritic handling: ă→a, â→a, ầ→a, á→a, ñ→n, etc.
+                    raw = _ud.normalize("NFKD", raw).encode("ascii", "ignore").decode("ascii")
+                    # Remove anything that isn't alphanumeric or hyphen (trailing dots, etc.)
+                    raw = _re.sub(r"[^a-z0-9-]", "", raw)
+                    derived = _re.sub(r"-+", "-", raw).strip("-")
+                    if derived:
+                        task_map[f"{owner}/{derived}"] = k_slug
+                        # No-hyphen fuzzy key — handles kbench stripping non-ASCII
+                        # vs Kaggle replacing with '-', and letter-digit boundary diffs
+                        no_hyph = derived.replace("-", "")
+                        if no_hyph:
+                            task_map[f"{owner}/{no_hyph}"] = k_slug
             except Exception:
                 pass
             _time.sleep(0.1)
