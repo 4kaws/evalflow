@@ -659,13 +659,14 @@ class PullView(Vertical):
         # Note: benchmark task runs do NOT update a kernel's public last_run_time —
         # only manual notebook runs do. Kernels used exclusively as benchmark tasks
         # often have null or stale last_run_time even when they have recent outputs.
-        # We must scan all kernels; the 200 cap bounds the cost.
+        # We must scan all kernels; the 500 cap handles prolific owners (200 was too low
+        # — gpreda has 200+ notebooks and batch-02 was silently excluded at the old cap).
         # ApiListKernelsRequest uses integer page pagination — next_page_token is never
         # populated by this endpoint, so we must increment req.page explicitly.
         import time as _time
         kernels = []
         page = 1
-        while len(kernels) < 200:
+        while len(kernels) < 500:
             req = ApiListKernelsRequest()
             req.user      = owner
             req.page_size = 20
