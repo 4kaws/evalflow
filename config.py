@@ -31,25 +31,26 @@ class Config:
         )
 
     def ensure_kaggle_json(self) -> None:
-        """Write ~/.kaggle/kaggle.json from .env credentials if the file doesn't exist.
+        """Write ~/.kaggle/kaggle.json from .env credentials, overwriting if they differ.
 
         kagglesdk's KaggleClient() reads basic-auth credentials ONLY from
         ~/.kaggle/kaggle.json — it ignores KAGGLE_USERNAME / KAGGLE_KEY env vars.
         The Benchmark Tasks API rejects Bearer auth (used when api_token= is passed
-        explicitly), so we must ensure kaggle.json exists before calling KaggleClient().
-
-        This is a no-op if kaggle.json already exists (we never overwrite existing creds).
+        explicitly), so we must ensure kaggle.json is up-to-date before KaggleClient().
         """
         if not self.kaggle_username or not self.kaggle_key:
             return
         kaggle_json = Path.home() / ".kaggle" / "kaggle.json"
+        desired = {"username": self.kaggle_username, "key": self.kaggle_key}
         if kaggle_json.exists():
-            return
+            try:
+                existing = json.loads(kaggle_json.read_text())
+                if existing.get("username") == self.kaggle_username and existing.get("key") == self.kaggle_key:
+                    return
+            except Exception:
+                pass
         kaggle_json.parent.mkdir(mode=0o700, exist_ok=True)
-        kaggle_json.write_text(json.dumps({
-            "username": self.kaggle_username,
-            "key": self.kaggle_key,
-        }))
+        kaggle_json.write_text(json.dumps(desired))
         kaggle_json.chmod(0o600)
 
 
