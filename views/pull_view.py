@@ -302,7 +302,6 @@ class PullView(Vertical):
 
         # Authenticate
         try:
-            import os
             from kagglesdk import KaggleClient
             from config import config
 
@@ -316,13 +315,17 @@ class PullView(Vertical):
                 )
                 return
 
-            # kagglesdk reads basic-auth credentials from ~/.kaggle/kaggle.json only
-            # (not from KAGGLE_USERNAME/KAGGLE_KEY env vars). The Benchmark Tasks API
-            # rejects Bearer auth, so we must NOT pass api_token= here. Ensure the
-            # file exists first so KaggleClient() picks up the right credentials.
+            # kagglesdk's KaggleClient() prefers Bearer auth (from KAGGLE_API_TOKEN env
+            # var or ~/.kaggle/access_token file) over basic auth (kaggle.json). The
+            # Benchmark Tasks API returns 403 on Bearer auth. Force basic auth by
+            # initialising the session and then overriding its .auth tuple directly.
             config.ensure_kaggle_json()
             kag_client = KaggleClient()
-            log.write_line("[ok] Authenticated with Kaggle API\n")
+            _http = kag_client._http_client
+            _http._init_session()
+            _http._session.auth = (config.kaggle_username, config.kaggle_key)
+            _http._signed_in = True
+            log.write_line(f"[ok] Authenticated as {config.kaggle_username}\n")
         except ImportError:
             log.write_line("[x] kaggle / kagglesdk package not installed.")
             return
@@ -565,13 +568,17 @@ class PullView(Vertical):
         log.write_line(">> Listing your benchmark tasks…\n")
 
         try:
-            import os
             from kagglesdk import KaggleClient
             from config import config as _cfg
-            if _cfg.kaggle_username and _cfg.kaggle_key:
-                os.environ["KAGGLE_USERNAME"] = _cfg.kaggle_username
-                os.environ["KAGGLE_KEY"]      = _cfg.kaggle_key
+            if not _cfg.kaggle_username or not _cfg.kaggle_key:
+                log.write_line("[x] Credentials not configured. Run wizard (w) to set KAGGLE_USERNAME + KAGGLE_KEY.")
+                return
+            _cfg.ensure_kaggle_json()
             kag_client = KaggleClient()
+            _http = kag_client._http_client
+            _http._init_session()
+            _http._session.auth = (_cfg.kaggle_username, _cfg.kaggle_key)
+            _http._signed_in = True
         except Exception as exc:
             log.write_line(f"[x] Auth failed: {exc}")
             return
