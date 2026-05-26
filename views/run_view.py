@@ -574,6 +574,10 @@ class RunView(Vertical):
                     lambda: log.write_line("[x] Credentials not configured. Run setup wizard (w).")
                 )
                 return None
+            # Must write kaggle.json before KaggleClient() — the SDK prefers Bearer auth
+            # (KAGGLE_API_TOKEN env var / access_token file) over basic auth, and the
+            # Benchmark Tasks API rejects Bearer auth with 404.
+            config.ensure_kaggle_json()
             return KaggleClient()
         except ImportError:
             self.app.call_from_thread(lambda: log.write_line("[x] kagglesdk not installed."))
