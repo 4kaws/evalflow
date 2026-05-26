@@ -30,7 +30,7 @@ on:
         options: ["true", "false"]
 
   schedule:
-    - cron: "0 8 * * *"
+    - cron: "30 8 * * *"
       timezone: "Europe/Bucharest"
 
 env:
