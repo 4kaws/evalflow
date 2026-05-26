@@ -14,7 +14,7 @@ from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, DataTable, Log, Select, SelectionList, Static
+from textual.widgets import Button, DataTable, Input, Log, Select, SelectionList, Static
 
 from config import config
 from views.widgets import PageHeader
@@ -67,6 +67,9 @@ class RunView(Vertical):
 
     #tasks-btn-row { layout: horizontal; height: 3; margin-top: 1; }
     #tasks-btn-row Button { margin-right: 1; }
+
+    #manual-slug-row { layout: horizontal; height: 3; margin-top: 1; align: left middle; }
+    #manual-slug-input { width: 1fr; margin-right: 1; }
 
     #schedule-panel {
         width: 1fr;
@@ -156,6 +159,12 @@ class RunView(Vertical):
                         yield Button("List My Tasks",           id="list-tasks-btn",   variant="primary")
                         yield Button("Refresh Runs",            id="refresh-runs-btn", variant="default")
                         yield Button("Open Benchmark on Kaggle", id="open-benchmark-btn", variant="default")
+                    with Horizontal(id="manual-slug-row"):
+                        yield Input(
+                            placeholder="owner/task-slug  (if List My Tasks fails)",
+                            id="manual-slug-input",
+                        )
+                        yield Button("Add Task", id="add-task-btn", variant="default")
 
                 # Right: Schedule form with dropdowns
                 with Vertical(id="schedule-panel"):
@@ -213,6 +222,15 @@ class RunView(Vertical):
                 self._load_task_runs(self._selected_task_slug)
         elif bid == "schedule-btn":
             self._do_schedule()
+        elif bid == "add-task-btn":
+            inp = self.query_one("#manual-slug-input", Input)
+            slug = inp.value.strip()
+            if not slug or "/" not in slug:
+                log = self.query_one("#run-log", Log)
+                log.write_line("[x] Enter a slug in owner/task-slug format.")
+            else:
+                self._add_task_to_ui(slug)
+                inp.value = ""
         elif bid == "open-benchmark-btn":
             log = self.query_one("#run-log", Log)
             slug = self._selected_task_slug
@@ -257,6 +275,47 @@ class RunView(Vertical):
             except Exception:
                 pass
             self._load_task_runs(slug)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "manual-slug-input":
+            slug = event.value.strip()
+            if slug and "/" in slug:
+                self._add_task_to_ui(slug)
+                event.input.value = ""
+            else:
+                log = self.query_one("#run-log", Log)
+                log.write_line("[x] Enter a slug in owner/task-slug format.")
+
+    def _add_task_to_ui(self, slug: str) -> None:
+        """Add a manually-entered task slug to the table and select without the API."""
+        if any(t["slug"] == slug for t in self._tasks):
+            # Already present — just select it
+            self._selected_task_slug = slug
+            sel = self.query_one("#task-select", Select)
+            try:
+                sel.value = slug
+            except Exception:
+                pass
+            self._load_task_runs(slug)
+            return
+
+        task = {"slug": slug, "state": "MANUAL", "created": "—"}
+        self._tasks.append(task)
+
+        tt = self.query_one("#tasks-table", DataTable)
+        tt.add_row(slug, "○", "—")
+
+        sel = self.query_one("#task-select", Select)
+        options = [(t["slug"], t["slug"]) for t in self._tasks
+                   if t["slug"] and "/" in t["slug"]]
+        if options:
+            sel.set_options(options)
+            sel.value = slug
+        self._selected_task_slug = slug
+        self._load_task_runs(slug)
+        self.query_one("#status-bar").update(
+            f"  Task added — select models and click Schedule Runs"
+        )
 
     def action_refresh(self) -> None:
         self._load_my_tasks()
@@ -331,7 +390,10 @@ class RunView(Vertical):
 
         except Exception as exc:
             self.app.call_from_thread(
-                lambda: log.write_line(f"[x] Failed to list tasks: {exc}")
+                lambda: log.write_line(
+                    f"[x] Failed to list tasks: {exc}\n"
+                    "    → Enter your task slug manually in the field below the table."
+                )
             )
 
     @work(thread=True)
