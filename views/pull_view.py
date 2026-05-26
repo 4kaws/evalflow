@@ -158,6 +158,7 @@ class PullView(Vertical):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._history: list[str] = _load_history()
+        self._kernel_map_cache: dict[str, dict[str, str]] = {}  # owner → {task_slug → kernel_slug}
 
     def compose(self) -> ComposeResult:
         yield PageHeader(
@@ -550,6 +551,7 @@ class PullView(Vertical):
         task_slug: str,
         out_dir: Path,
         log: Log,
+        resolved_slug: str | None = None,
     ) -> list[Path] | None:
         """Fallback: list .run.json outputs via the Kernels API and download directly.
 
@@ -561,7 +563,8 @@ class PullView(Vertical):
         from kagglesdk.kernels.types.kernels_api_service import ApiListKernelSessionOutputRequest
         from config import config as _cfg
 
-        owner, kernel_slug = task_slug.split("/", 1)
+        owner, default_slug = task_slug.split("/", 1)
+        kernel_slug = resolved_slug if resolved_slug is not None else default_slug
         all_run_files = []
         page_token = ""
 
@@ -587,12 +590,25 @@ class PullView(Vertical):
         except Exception as exc:
             exc_str = str(exc)
             if "403" in exc_str or "404" in exc_str:
+                if resolved_slug is None:
+                    # Direct slug failed — scan owner's notebooks to find the real kernel slug
+                    km = self._kernel_map_cache.get(owner)
+                    if km is None:
+                        log.write_line(f"   (scanning {owner}'s notebooks to resolve task slug…)")
+                        km = self._build_kernel_map(kag_client, owner, log)
+                    hit = km.get(task_slug)
+                    if hit:
+                        log.write_line(f"   (found matching notebook: {owner}/{hit})")
+                        return self._pull_one_task_kernels(
+                            kag_client, task_slug, out_dir, log, resolved_slug=hit
+                        )
                 log.write_line(
-                    f"   [x] {task_slug}: not accessible via either API.\n"
+                    f"   [x] {task_slug}: kernel not found (slug mismatch or private).\n"
                     f"   Authenticated as: {_cfg.kaggle_username or '(unknown)'}\n"
-                    "   Possible causes:\n"
-                    "   • The task is private — only the owner can pull it\n"
-                    "   • The task slug is wrong — use 'Browse My Tasks' to check\n"
+                    "   Most likely cause: the benchmark creator named their notebook\n"
+                    "   generically (e.g. 'task-7') — it doesn't match the task slug.\n"
+                    "   Other possibilities:\n"
+                    "   • Notebook is private — only the owner can pull it\n"
                     "   • No model runs have completed yet"
                 )
                 return None
@@ -624,6 +640,84 @@ class PullView(Vertical):
                 log.write_line(f"   [!] Download failed for {fi.file_name}: {exc}")
 
         return saved
+
+    def _build_kernel_map(self, kag_client, owner: str, log: Log) -> dict[str, str]:
+        """List owner's kernels and build a task_slug → kernel_slug map.
+
+        Checks each recently-active kernel's outputs for .run.json filenames, which
+        embed the task name as a prefix (e.g. Task_Slug-run_id_N_…).  Populates
+        self._kernel_map_cache[owner] and returns the map.
+        """
+        from kagglesdk.kernels.types.kernels_api_service import (
+            ApiListKernelsRequest,
+            ApiListKernelSessionOutputRequest,
+        )
+
+        # Note: benchmark task runs do NOT update a kernel's public last_run_time —
+        # only manual notebook runs do. Kernels used exclusively as benchmark tasks
+        # often have null or stale last_run_time even when they have recent outputs.
+        # We must scan all kernels; the 200 cap bounds the cost.
+        # ApiListKernelsRequest uses integer page pagination — next_page_token is never
+        # populated by this endpoint, so we must increment req.page explicitly.
+        import time as _time
+        kernels = []
+        page = 1
+        while len(kernels) < 200:
+            req = ApiListKernelsRequest()
+            req.user      = owner
+            req.page_size = 20
+            req.page      = page
+            try:
+                resp = self._api_call_with_retry(
+                    lambda r=req: kag_client.kernels.kernels_api_client.list_kernels(r),
+                    log, f"list kernels/{owner} page {page}",
+                )
+            except Exception:
+                break
+            new_kernels = resp.kernels or []
+            if not new_kernels:
+                break
+            kernels.extend(new_kernels)
+            if len(new_kernels) < 20:
+                break  # last partial page
+            page += 1
+            _time.sleep(0.2)
+
+        log.write_line(f"   ({len(kernels)} recently-active notebook(s) found for {owner})")
+        task_map: dict[str, str] = {}
+        for i, k in enumerate(kernels):
+            if i and i % 10 == 0:
+                log.write_line(f"   (scanned {i}/{len(kernels)} notebooks…)")
+            parts = (k.ref or "").split("/", 1)
+            if len(parts) < 2:
+                continue
+            k_slug = parts[1]
+            try:
+                out_req = ApiListKernelSessionOutputRequest()
+                out_req.user_name   = owner
+                out_req.kernel_slug = k_slug
+                out_req.page_size   = 100
+                out_resp = self._api_call_with_retry(
+                    lambda r=out_req: kag_client.kernels.kernels_api_client.list_kernel_session_output(r),
+                    log, f"scan {k_slug}",
+                )
+                for fi in (out_resp.files or []):
+                    fname = Path(fi.file_name).name
+                    if not fname.endswith(".run.json"):
+                        continue
+                    if "-run_id_" in fname:
+                        prefix = fname.split("-run_id_")[0]
+                    else:
+                        prefix = fname[: -len(".run.json")]
+                    derived = prefix.lower().replace("_", "-")
+                    task_map[f"{owner}/{derived}"] = k_slug
+            except Exception:
+                pass
+            _time.sleep(0.1)
+
+        log.write_line(f"   → {len(task_map)} task slug(s) mapped")
+        self._kernel_map_cache[owner] = task_map
+        return task_map
 
     # ------------------------------------------------------------------ #
     #  Browse own tasks                                                    #
