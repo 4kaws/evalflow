@@ -709,7 +709,7 @@ class PullView(Vertical):
                         prefix = fname.split("-run_id_")[0]
                     else:
                         prefix = fname[: -len(".run.json")]
-                    derived = prefix.lower().replace("_", "-")
+                    derived = prefix.lower().replace("_", "-").rstrip("-")
                     task_map[f"{owner}/{derived}"] = k_slug
             except Exception:
                 pass
