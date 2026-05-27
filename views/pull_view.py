@@ -316,7 +316,6 @@ class PullView(Vertical):
 
         # Authenticate
         try:
-            from kagglesdk import KaggleClient
             from config import config
 
             if not config.kaggle_username or not config.kaggle_key:
@@ -329,33 +328,13 @@ class PullView(Vertical):
                 )
                 return
 
-            # Benchmark Tasks API requires OAuth Bearer auth to return all model runs
-            # for public tasks. Try to load ~/.kaggle/credentials.json (written by
-            # `kaggle auth login` or the Run view's Login button). If found, use
-            # Bearer auth so list_benchmark_task_runs works for non-owned public tasks.
-            # Falls back to Basic auth (API key) if no OAuth token is available —
-            # Basic auth still works for the Kernels API fallback path.
             config.ensure_kaggle_json()
-            base_client = KaggleClient(
-                username=config.kaggle_username,
-                password=config.kaggle_key,
+            from core.auth import make_bearer_client
+            kag_client, _ = make_bearer_client(
+                config.kaggle_username,
+                config.kaggle_key,
+                log=log.write_line,
             )
-            kag_client = base_client
-            try:
-                from kagglesdk.kaggle_creds import KaggleCredentials
-                _creds = KaggleCredentials.load(base_client)
-                if _creds:
-                    _token = _creds.get_access_token()
-                    kag_client = KaggleClient(api_token=_token)
-                    log.write_line(f"[ok] Authenticated as {config.kaggle_username} (Bearer)\n")
-                else:
-                    log.write_line(
-                        f"[ok] Authenticated as {config.kaggle_username}\n"
-                        "   [!] No OAuth token — Benchmark Tasks API will 404 for non-owned tasks.\n"
-                        "       Run  ! kaggle auth login  then restart to fetch all model runs.\n"
-                    )
-            except Exception:
-                log.write_line(f"[ok] Authenticated as {config.kaggle_username}\n")
         except ImportError:
             log.write_line("[x] kaggle / kagglesdk package not installed.")
             return

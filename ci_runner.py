@@ -7,10 +7,18 @@ Usage:
         --slug  your-username/your-benchmark-name \
         --dataset-slug  your-dataset-slug \
         --dataset-title "Your Dataset Title"
+
+For CI: set KAGGLE_USERNAME, KAGGLE_KEY, and KAGGLE_REFRESH_TOKEN as secrets.
+KAGGLE_REFRESH_TOKEN enables Bearer auth so all model runs are fetched.
+Get the value from ~/.kaggle/credentials.json after running `kaggle auth login`.
 """
+from __future__ import annotations
 
 import argparse
+import io
 import sys
+import time
+import zipfile
 from pathlib import Path
 
 
@@ -30,83 +38,180 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def discover_tasks(api, benchmark_slug: str) -> list[str]:
-    """Return all task notebook slugs under a benchmark."""
-    # Strategy 1: parent/child API
+def _api_call_with_retry(call, label: str):
+    """Call a zero-arg callable, retrying on HTTP 429 with exponential back-off."""
+    delays = [2, 5, 15]
+    for delay in delays + [None]:
+        try:
+            return call()
+        except Exception as exc:
+            if "429" not in str(exc) or delay is None:
+                raise
+            print(f"   (rate limited on {label}, retrying in {delay}s…)")
+            time.sleep(delay)
+
+
+def pull_task(kag_client, task_slug: str, out_dir: Path) -> list[Path]:
+    """Download all .run.json outputs for a benchmark task via the Tasks API.
+
+    Returns a list of saved paths (empty if no completed runs exist).
+    Falls back to the Kernels API (latest session only) when the Tasks API
+    returns 403/404 — this happens when Bearer auth is unavailable.
+    """
+    from kagglesdk.benchmarks.types.benchmark_tasks_api_service import (
+        ApiBenchmarkTaskSlug,
+        ApiDownloadBenchmarkTaskRunOutputRequest,
+        ApiListBenchmarkTaskRunsRequest,
+        BenchmarkTaskRunState,
+    )
+
+    owner, slug_name = task_slug.split("/", 1)
+    client = kag_client.benchmarks.benchmark_tasks_api_client
+
+    completed_run_ids: list[int] = []
+    page_token = ""
     try:
-        children = api.kernels_list(parent_kernel=benchmark_slug, page_size=100)
-        if children:
-            slugs = [k.ref for k in children]
-            print(f"   Found {len(slugs)} task(s) via parent lookup")
-            return slugs
-    except Exception:
-        pass
-
-    # Strategy 2: search by name
-    username, name = benchmark_slug.split("/", 1)
-    try:
-        results = api.kernels_list(user=username, search=name, page_size=50)
-        tasks = [k for k in results if name.rstrip("-_") in k.ref.lower()]
-        if tasks:
-            slugs = [k.ref for k in tasks]
-            print(f"   Found {len(slugs)} task(s) via search")
-            return slugs
-    except Exception:
-        pass
-
-    # Strategy 3: treat as single task
-    print("   Could not discover child tasks — treating as single-task benchmark")
-    return [benchmark_slug]
-
-
-def pull_task(api, task_slug: str, out_dir: Path) -> list[Path]:
-    """Pull .run.json outputs from one task notebook."""
-    import shutil
-    tmp = out_dir / "_tmp_task"
-    tmp.mkdir(parents=True, exist_ok=True)
-    try:
-        api.kernels_output(task_slug, path=str(tmp))
-        saved = []
-        for run_file in tmp.glob("*.run.json"):
-            dest = out_dir / run_file.name
-            run_file.rename(dest)
-            saved.append(dest)
-            print(f"      Saved: {dest.name}")
-        return saved
+        while True:
+            req = ApiListBenchmarkTaskRunsRequest()
+            slug_obj = ApiBenchmarkTaskSlug()
+            slug_obj.owner_slug = owner
+            slug_obj.task_slug  = slug_name
+            req.task_slug  = slug_obj
+            req.page_size  = 100
+            if page_token:
+                req.page_token = page_token
+            resp = _api_call_with_retry(
+                lambda r=req: client.list_benchmark_task_runs(r),
+                "list runs",
+            )
+            for run in resp.runs or []:
+                if run.state == BenchmarkTaskRunState.BENCHMARK_TASK_RUN_STATE_COMPLETED:
+                    completed_run_ids.append(run.id)
+            page_token = resp.next_page_token or ""
+            if not page_token:
+                break
     except Exception as exc:
-        print(f"      ❌ Failed: {exc}", file=sys.stderr)
+        exc_str = str(exc)
+        if "403" in exc_str or "404" in exc_str:
+            print(f"   (Tasks API unavailable — falling back to Kernels API; only latest run fetched)")
+            return _pull_task_kernels(kag_client, task_slug, out_dir)
+        print(f"   [x] Failed to list runs: {exc_str}", file=sys.stderr)
         return []
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+
+    if not completed_run_ids:
+        print("   [!] No completed runs found")
+        return []
+
+    print(f"   {len(completed_run_ids)} completed run(s)")
+    saved: list[Path] = []
+    for run_id in completed_run_ids:
+        try:
+            dl_req = ApiDownloadBenchmarkTaskRunOutputRequest()
+            dl_req.run_id = run_id
+            r = _api_call_with_retry(
+                lambda req=dl_req: client.download_benchmark_task_run_output(req),
+                f"download run {run_id}",
+            )
+            if not r.ok:
+                print(f"   [!] Run {run_id}: HTTP {r.status_code}")
+                continue
+            zf = zipfile.ZipFile(io.BytesIO(r.content))
+            for name in zf.namelist():
+                if not name.endswith(".run.json"):
+                    continue
+                dest = out_dir / Path(name).name
+                if not dest.exists():
+                    dest.write_bytes(zf.read(name))
+                saved.append(dest)
+                print(f"   + {name}")
+        except Exception as exc:
+            print(f"   [!] Failed to download run {run_id}: {exc}", file=sys.stderr)
+
+    return saved
+
+
+def _pull_task_kernels(kag_client, task_slug: str, out_dir: Path) -> list[Path]:
+    """Kernels API fallback — returns only the latest model run."""
+    from kagglesdk.kernels.types.kernels_api_service import ApiListKernelSessionOutputRequest
+
+    owner, slug_name = task_slug.split("/", 1)
+    req = ApiListKernelSessionOutputRequest()
+    req.user_name   = owner
+    req.kernel_slug = slug_name
+    try:
+        resp = kag_client.kernels.kernels_api_client.list_kernel_session_output(req)
+    except Exception as exc:
+        print(f"   [x] Kernels API failed: {exc}", file=sys.stderr)
+        return []
+
+    saved: list[Path] = []
+    for f in resp.files or []:
+        if not f.file_name.endswith(".run.json"):
+            continue
+        import requests as _req
+        try:
+            r = _req.get(f.url, timeout=60)
+            r.raise_for_status()
+            dest = out_dir / Path(f.file_name).name
+            dest.write_bytes(r.content)
+            saved.append(dest)
+            print(f"   + {f.file_name}")
+        except Exception as exc:
+            print(f"   [!] Failed to download {f.file_name}: {exc}", file=sys.stderr)
+    return saved
 
 
 def main() -> None:
-    args   = parse_args()
+    args    = parse_args()
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # ── Authenticate ──────────────────────────────────────────────────
-    try:
-        from kaggle.api.kaggle_api_extended import KaggleApi
-        api = KaggleApi()
-        api.authenticate()
-        print("✅ Authenticated with Kaggle API")
-    except (SystemExit, Exception) as exc:
-        print(f"❌ Auth failed: {exc}", file=sys.stderr)
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    from config import config
+
+    if not config.kaggle_username or not config.kaggle_key:
+        print("❌ KAGGLE_USERNAME and KAGGLE_KEY must be set in .env or environment", file=sys.stderr)
         sys.exit(1)
+
+    config.ensure_kaggle_json()
+
+    from core.auth import make_bearer_client
+    kag_client, bearer_ok = make_bearer_client(
+        config.kaggle_username,
+        config.kaggle_key,
+        log=print,
+    )
+
+    if not bearer_ok:
+        print(
+            "\n⚠  Running without Bearer auth — only the latest model run will be fetched per task.\n"
+            "   To get all model runs:\n"
+            "     Local : kaggle auth login\n"
+            "     CI    : add KAGGLE_REFRESH_TOKEN as a repo secret\n"
+            "   (see README for how to extract the refresh token)\n"
+        )
 
     # ── Discover tasks ────────────────────────────────────────────────
     print(f"\n🔍 Discovering tasks under: {args.slug}")
-    task_slugs = discover_tasks(api, args.slug)
+    from core.discovery import discover_tasks
+    task_slugs = discover_tasks(kag_client, args.slug, log=print)
+    if not task_slugs:
+        print(f"   Could not discover tasks — treating as single-task benchmark")
+        task_slugs = [args.slug]
     print(f"   → {len(task_slugs)} task(s) to pull\n")
 
     # ── Pull each task ────────────────────────────────────────────────
-    all_files:  list[Path] = []
-    failed:     list[str]  = []
+    all_files: list[Path] = []
+    failed:    list[str]  = []
 
     for i, task_slug in enumerate(task_slugs, 1):
+        if i > 1:
+            time.sleep(0.5)
         print(f"⬇  [{i}/{len(task_slugs)}] {task_slug}")
-        files = pull_task(api, task_slug, out_dir)
+        files = pull_task(kag_client, task_slug, out_dir)
         if files:
             all_files.extend(files)
         else:
@@ -130,7 +235,7 @@ def main() -> None:
             print(f"✅ evalflow_sft.csv          — {len(sft_df)} rows (passing only)")
             print(f"✅ evalflow_preferences.csv  — {len(pref_df)} preference pairs (≤{args.max_pairs}/question)")
             if stats.get("parquet_written"):
-                print(f"✅ .parquet variants written")
+                print("✅ .parquet variants written")
             print(f"   Tasks     : {stats['tasks']}")
             print(f"   Models    : {stats['models']}")
             print(f"   Accuracy  : {stats['accuracy']}%")
@@ -141,13 +246,12 @@ def main() -> None:
             print("❌ --dataset-slug and --dataset-title required for --publish", file=sys.stderr)
             sys.exit(1)
 
-        import json, os, shutil
+        import json, shutil
         from core.merger import SFT_FILENAME, PREF_FILENAME, row_count
         from core.uploader import upload_dataset, DEFAULT_LICENSE
         from views.publish_view import build_dataset_card
 
-        username = os.environ.get("KAGGLE_USERNAME", "")
-        staging  = out_dir / "staging" / args.dataset_slug
+        staging = out_dir / "staging" / args.dataset_slug
         if staging.exists():
             shutil.rmtree(staging)
         staging.mkdir(parents=True)
@@ -171,12 +275,12 @@ def main() -> None:
 
         (staging / "dataset-metadata.json").write_text(json.dumps({
             "title":       args.dataset_title,
-            "id":          f"{username}/{args.dataset_slug}",
+            "id":          f"{config.kaggle_username}/{args.dataset_slug}",
             "licenses":    [{"name": DEFAULT_LICENSE}],
             "description": args.dataset_description,
         }, indent=2))
 
-        print(f"\n🚀 Publishing: {username}/{args.dataset_slug}")
+        print(f"\n🚀 Publishing: {config.kaggle_username}/{args.dataset_slug}")
         result = upload_dataset(folder=staging, is_update=args.update, log_cb=print)
         if not result.success:
             print(f"❌ Publish failed: {result.error}", file=sys.stderr)

@@ -56,9 +56,10 @@ jobs:
 
       - name: Run monitor (all watchers)
         env:
-          KAGGLE_USERNAME:    ${{ secrets.KAGGLE_USERNAME }}
-          KAGGLE_KEY:         ${{ secrets.KAGGLE_KEY }}
-          EVALFLOW_MANIFEST:  ${{ secrets.EVALFLOW_MANIFEST }}
+          KAGGLE_USERNAME:        ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY:             ${{ secrets.KAGGLE_KEY }}
+          KAGGLE_REFRESH_TOKEN:   ${{ secrets.KAGGLE_REFRESH_TOKEN }}
+          EVALFLOW_MANIFEST:      ${{ secrets.EVALFLOW_MANIFEST }}
           GITHUB_TOKEN:       ${{ secrets.GH_PAT }}
           GITHUB_REPO:        ${{ github.repository }}
           OUTPUT_DIR:         outputs
@@ -97,9 +98,10 @@ jobs:
 
       - name: Pull, merge & publish
         env:
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
-          KAGGLE_KEY:      ${{ secrets.KAGGLE_KEY }}
-          OUTPUT_DIR:      outputs
+          KAGGLE_USERNAME:        ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY:             ${{ secrets.KAGGLE_KEY }}
+          KAGGLE_REFRESH_TOKEN:   ${{ secrets.KAGGLE_REFRESH_TOKEN }}
+          OUTPUT_DIR:             outputs
         run: |
           python ci_runner.py \
             --slug    "${{ github.event.inputs.notebook_slug }}" \
