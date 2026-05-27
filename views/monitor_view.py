@@ -91,7 +91,7 @@ class MonitorView(Vertical):
     _BTN_IDS = ["check-btn", "add-btn", "remove-btn"]
 
     BINDINGS = [
-        Binding("ctrl+l", "toggle_log_focus", "Expand log", show=True, key_display="Ctrl+L"),
+        Binding("ctrl+l", "toggle_log_focus", "Expand log", show=True, key_display="Ctrl+L", priority=True),
         Binding("ctrl+r", "check_all", "Check All", show=True, key_display="Ctrl+R"),
     ]
 
@@ -256,7 +256,9 @@ class MonitorView(Vertical):
                     yield Button("New Watcher",     id="new-btn",       variant="default")
 
             with Vertical(id="monitor-right"):
-                yield Static("Activity Log", classes="section-title")
+                with Horizontal(classes="log-header-row"):
+                    yield Static("Activity Log", classes="section-title")
+                    yield Button("⛶", classes="log-expand-btn")
                 yield Log(id="monitor-log", highlight=True)
 
     def on_mount(self) -> None:
@@ -405,6 +407,9 @@ class MonitorView(Vertical):
             )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.has_class("log-expand-btn"):
+            self.action_toggle_log_focus()
+            return
         bid = event.button.id
         if bid == "copy-log-btn":
             self._copy_log()

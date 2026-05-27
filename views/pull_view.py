@@ -39,7 +39,7 @@ class PullView(Vertical):
     _BTN_IDS = ["pull-btn", "list-btn", "browse-btn", "open-btn"]
 
     BINDINGS = [
-        Binding("ctrl+l", "toggle_log_focus", "Expand log", show=True, key_display="Ctrl+L"),
+        Binding("ctrl+l", "toggle_log_focus", "Expand log", show=True, key_display="Ctrl+L", priority=True),
         Binding("down",   "nav_down",  show=False),
         Binding("up",     "nav_up",    show=False),
         Binding("left",   "nav_left",  show=False),
@@ -219,7 +219,9 @@ class PullView(Vertical):
                     yield Button("Open on Kaggle",  id="open-btn",   variant="default")
 
             with Vertical(id="pull-results"):
-                yield Static("Pull Log", classes="section-title")
+                with Horizontal(classes="log-header-row"):
+                    yield Static("Pull Log", classes="section-title")
+                    yield Button("⛶", classes="log-expand-btn")
                 yield Log(id="pull-log", highlight=True)
 
             with Vertical(id="pull-downloads"):
@@ -237,6 +239,9 @@ class PullView(Vertical):
     # ------------------------------------------------------------------ #
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.has_class("log-expand-btn"):
+            self.action_toggle_log_focus()
+            return
         bid = event.button.id
         if bid == "pull-btn":
             self._do_pull(download=True)

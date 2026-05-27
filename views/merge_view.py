@@ -16,7 +16,7 @@ class MergeView(Vertical):
     _BTN_IDS = ["merge-btn", "refresh-btn", "selectall-btn"]
 
     BINDINGS = [
-        Binding("ctrl+l", "toggle_log_focus", "Expand log", show=True, key_display="Ctrl+L"),
+        Binding("ctrl+l", "toggle_log_focus", "Expand log", show=True, key_display="Ctrl+L", priority=True),
         Binding("ctrl+a", "select_all", "Select all", show=True, key_display="Ctrl+A"),
         Binding("ctrl+m", "merge",      "Merge",      show=True, key_display="Ctrl+M"),
         Binding("ctrl+r", "refresh",    "Refresh",    show=True, key_display="Ctrl+R"),
@@ -152,7 +152,9 @@ class MergeView(Vertical):
                     yield Button("Select All",     id="selectall-btn")
 
             with Vertical(id="merge-results"):
-                yield Static("Merge Log", classes="section-title")
+                with Horizontal(classes="log-header-row"):
+                    yield Static("Merge Log", classes="section-title")
+                    yield Button("⛶", classes="log-expand-btn")
                 yield Log(id="merge-log", highlight=True)
                 yield Static("", id="stats-panel")
 
@@ -191,6 +193,9 @@ class MergeView(Vertical):
     # ------------------------------------------------------------------ #
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.has_class("log-expand-btn"):
+            self.action_toggle_log_focus()
+            return
         if event.button.id == "merge-btn":
             self._do_merge()
         elif event.button.id == "refresh-btn":

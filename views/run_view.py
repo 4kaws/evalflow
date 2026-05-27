@@ -42,7 +42,7 @@ _STATE_ICONS = {
 
 class RunView(Vertical):
     BINDINGS = [
-        Binding("ctrl+l", "toggle_log_focus", "Expand log", show=True, key_display="Ctrl+L"),
+        Binding("ctrl+l", "toggle_log_focus", "Expand log", show=True, key_display="Ctrl+L", priority=True),
         Binding("ctrl+r", "refresh", "Refresh", show=True, key_display="Ctrl+R"),
     ]
 
@@ -225,7 +225,9 @@ class RunView(Vertical):
                 yield Static("Recent Runs", classes="section-title")
                 yield DataTable(id="runs-table", cursor_type="row", zebra_stripes=True)
 
-                yield Static("Log", classes="section-title")
+                with Horizontal(classes="log-header-row"):
+                    yield Static("Log", classes="section-title")
+                    yield Button("⛶", classes="log-expand-btn")
                 yield Log(id="run-log", highlight=True)
                 yield Static("", id="status-bar")
 
@@ -245,6 +247,9 @@ class RunView(Vertical):
     # ------------------------------------------------------------------ #
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.has_class("log-expand-btn"):
+            self.action_toggle_log_focus()
+            return
         bid = event.button.id
         if bid == "list-tasks-btn":
             self._load_my_tasks()

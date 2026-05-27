@@ -155,7 +155,7 @@ class PublishView(Vertical):
     _BTN_IDS = ["publish-btn", "update-btn"]
 
     BINDINGS = [
-        Binding("ctrl+l", "toggle_log_focus", "Expand log", show=True, key_display="Ctrl+L"),
+        Binding("ctrl+l", "toggle_log_focus", "Expand log", show=True, key_display="Ctrl+L", priority=True),
         Binding("ctrl+u", "publish_new",    "Publish new",    show=True, key_display="Ctrl+U"),
         Binding("ctrl+e", "publish_update", "Update existing", show=True, key_display="Ctrl+E"),
         Binding("down",   "nav_down",   show=False),
@@ -333,7 +333,9 @@ class PublishView(Vertical):
                     yield Button("Update Existing", id="update-btn",  variant="default")
 
             with Vertical(id="publish-results"):
-                yield Static("Publish Log", classes="section-title")
+                with Horizontal(classes="log-header-row"):
+                    yield Static("Publish Log", classes="section-title")
+                    yield Button("⛶", classes="log-expand-btn")
                 yield Log(id="publish-log", highlight=True)
                 with Horizontal(id="url-row"):
                     yield Static("", id="url-panel")
@@ -392,6 +394,9 @@ class PublishView(Vertical):
             )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.has_class("log-expand-btn"):
+            self.action_toggle_log_focus()
+            return
         if event.button.id == "publish-btn":
             self._do_publish(is_update=False)
         elif event.button.id == "update-btn":
