@@ -72,7 +72,7 @@ headless / ci:
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal
 from textual.events import Resize
 from textual.theme import Theme
 from textual.widgets import ContentSwitcher, Static
@@ -102,9 +102,6 @@ EVALFLOW_THEME = Theme(
     dark       = False,
 )
 
-# Pixel-art goose: head top-left, diagonal neck, wide oval body, two feet.
-GOOSE = "     ▄▄▄\n  ▄▄██▀██\n    ▀▀██▀\n      ▀█▄\n        ▀█▄\n   ▄████████▄\n  ████████████\n   ▀▀█▀▀▀▀█▀▀"
-
 NAV_ITEMS = [
     ("pull",        "Pull",        "1", "download runs"),
     ("results",     "Results",     "2", "browse responses"),
@@ -118,92 +115,59 @@ NAV_ITEMS = [
 _VIEW_LABELS = {v[0]: v[1] for v in NAV_ITEMS}
 
 
-class NavItem(Static):
+class TabItem(Static):
     DEFAULT_CSS = """
-    NavItem {
-        width: 100%;
-        height: 3;
+    TabItem {
+        width: auto;
+        height: 1;
         padding: 0 2;
         background: transparent;
         color: #636E7B;
         content-align: left middle;
     }
-    NavItem:hover {
+    TabItem:hover {
         background: $boost;
         color: $foreground;
     }
-    NavItem.active {
+    TabItem.active {
         background: $primary;
         color: white;
     }
-    NavItem.small {
-        height: 2;
-    }
-    NavItem.danger {
-        color: #636E7B;
-    }
-    NavItem.danger:hover {
-        color: $error;
-        background: $boost;
-    }
     """
 
-    def __init__(
-        self,
-        view_id: str,
-        label: str,
-        key: str,
-        app_action: str = "",
-        small: bool = False,
-        danger: bool = False,
-    ):
+    def __init__(self, view_id: str, label: str, key: str) -> None:
         super().__init__(f"[dim]{key}[/dim]  {label}", markup=True)
-        self.view_id    = view_id
-        self._app_action = app_action
-        if small:
-            self.add_class("small")
-        if danger:
-            self.add_class("danger")
+        self.view_id = view_id
+        self._key    = key
+        self._label  = label
+
+    def set_compact(self, compact: bool) -> None:
+        if compact:
+            self.update(self._key)
+            self.styles.padding = (0, 1, 0, 1)
+        else:
+            self.update(f"[dim]{self._key}[/dim]  {self._label}")
+            self.styles.padding = (0, 2, 0, 2)
 
     def on_click(self) -> None:
-        if self._app_action:
-            self.app.run_action(self._app_action)  # type: ignore
-        elif self.view_id:
-            self.app.switch_view(self.view_id)  # type: ignore
+        self.app.switch_view(self.view_id)  # type: ignore
 
 
-class BrandHeader(Horizontal):
+class TabBar(Horizontal):
     DEFAULT_CSS = """
-    BrandHeader {
+    TabBar {
         width: 100%;
-        height: 11;
-        padding: 1 2;
+        height: 1;
         background: $panel;
-        border-bottom: hkey #D0D7DE;
-        align: left top;
-    }
-    BrandHeader #brand-goose {
-        width: 15;
-        height: 8;
-        content-align: left top;
-        background: transparent;
-        color: #20BEFF;
-    }
-    BrandHeader #brand-name {
-        width: 1fr;
-        height: 8;
-        padding: 0 0 0 1;
-        content-align: left middle;
     }
     """
 
     def compose(self) -> ComposeResult:
-        yield Static(GOOSE, id="brand-goose")
-        yield Static(
-            f"[bold]evalflow[/bold]\n[dim]v{__version__}[/dim]",
-            markup=True,
-            id="brand-name",
-        )
+        for view_id, label, key, _hint in NAV_ITEMS:
+            item = TabItem(view_id, label, key)
+            if view_id == "pull":
+                item.add_class("active")
+            yield item
 
 
 class StatusBar(Horizontal):
@@ -245,7 +209,7 @@ class StatusBar(Horizontal):
         dot = "[#34C759]●[/#34C759]" if kaggle_ok else "[#FF3B30]●[/#FF3B30]"
         self.query_one("#sb-left",   Static).update(f"{dot} kaggle")
         self.query_one("#sb-center", Static).update(
-            "[dim]1–7[/dim] tabs  [dim]↑↓[/dim] navigate  [dim]?[/dim] help  [dim]q[/dim] quit"
+            "[dim]1–7[/dim] tabs  [dim]?[/dim] help  [dim]q[/dim] quit"
         )
         label = _VIEW_LABELS.get(view_id, "")
         self.query_one("#sb-right",  Static).update(f"evalflow · {label}")
@@ -259,41 +223,6 @@ class EvalflowApp(App):
 
     CSS = """
     Screen { layout: vertical; }
-
-    #app-shell {
-        height: 1fr;
-        layout: horizontal;
-    }
-
-    /* ── Sidebar ────────────────────────────────────────────── */
-    #sidebar {
-        width: 32;
-        height: 100%;
-        background: $panel;
-        border-right: hkey #D0D7DE;
-    }
-
-    #sidebar-nav {
-        height: auto;
-        padding: 1 0;
-        background: $panel;
-    }
-
-    #sidebar-spacer { height: 1fr; }
-
-    #sidebar-foot {
-        height: auto;
-        padding: 1 0;
-        border-top: hkey #D0D7DE;
-        background: $panel;
-    }
-
-    /* ── Main column ────────────────────────────────────────── */
-    #main {
-        height: 100%;
-        width: 1fr;
-        background: $background;
-    }
 
     ContentSwitcher {
         height: 1fr;
@@ -355,8 +284,7 @@ class EvalflowApp(App):
     }
 
     /* ── Responsive breakpoints ─────────────────────────────── */
-    /* narrow: < 110 cols — shrink sidebar, stack monitor panes  */
-    App.narrow #sidebar { width: 22; }
+    /* narrow: < 110 cols — stack monitor panes                  */
     App.narrow #monitor-body { layout: vertical; }
     App.narrow #monitor-left {
         border-right: none;
@@ -367,8 +295,7 @@ class EvalflowApp(App):
     App.narrow .field-label { width: 14; }
     App.narrow #tz-select { width: 1fr; max-width: 24; }
 
-    /* tiny: < 85 cols — compact sidebar, smaller labels         */
-    App.tiny #sidebar { width: 14; }
+    /* tiny: < 85 cols — compact form labels                     */
     App.tiny .field-label { width: 10; padding-right: 1; }
     App.tiny #help-box { width: 95%; }
 
@@ -378,28 +305,12 @@ class EvalflowApp(App):
     App.short #watcher-table { height: 4; }
     App.short #run-top       { height: 10; }
     App.short #runs-table    { height: 3; }
-    App.short BrandHeader              { height: 5; }
-    App.short BrandHeader #brand-goose { height: 3; }
-    App.short BrandHeader #brand-name  { height: 3; }
-    App.short NavItem                  { height: 2; }
-    App.short NavItem.small            { height: 1; }
-    App.short #sidebar-nav             { padding: 0; }
-    App.short #sidebar-foot            { padding: 0; }
     App.short PageHeader               { min-height: 3; padding: 0 2; }
     App.short PageHeader #ph-subtitle  { display: none; }
-    App.short .field-row               { height: 2; }
-    App.short .field-label             { height: 2; }
-    App.short #btn-row                 { margin-top: 0; }
     App.short #pull-body               { padding: 0 2; }
     App.short #merge-body              { padding: 0 2; }
     App.short #run-body                { padding: 0 2; }
     App.short #publish-body            { padding: 0 2; }
-
-    /* tiny-h: < 30 rows — hide sidebar entirely                 */
-    App.tiny-h #sidebar { display: none; }
-
-    /* no-sidebar: user-toggled sidebar hide (\\ key)            */
-    App.no-sidebar #sidebar { display: none; }
 
     /* tall: >= 55 rows — grow watcher table and run controls    */
     App.tall  #watcher-table { height: 10; }
@@ -411,7 +322,6 @@ class EvalflowApp(App):
         Binding("q",      "quit",                      "Quit",         show=False),
         Binding("?",      "toggle_help",               "Help",         show=False),
         Binding("w",      "open_wizard",               "Setup",        show=False),
-        Binding("\\",     "toggle_sidebar",            "Sidebar",      show=False),
         Binding("ctrl+l", "toggle_current_log_focus",  "Expand log",   show=False),
         Binding("1",      "nav_pull",        "Pull",        show=False),
         Binding("2",      "nav_results",     "Results",     show=False),
@@ -431,7 +341,9 @@ class EvalflowApp(App):
         self.set_class(w < 85,  "tiny")
         self.set_class(h < 42,  "short")
         self.set_class(h >= 55, "tall")
-        self.set_class(h < 30,  "tiny-h")
+        compact = w < 85
+        for tab in self.query(TabItem):
+            tab.set_compact(compact)
 
     def on_resize(self, event: Resize) -> None:
         w, h = event.size.width, event.size.height
@@ -439,7 +351,9 @@ class EvalflowApp(App):
         self.set_class(w < 85,  "tiny")
         self.set_class(h < 42,  "short")
         self.set_class(h >= 55, "tall")
-        self.set_class(h < 30,  "tiny-h")
+        compact = w < 85
+        for tab in self.query(TabItem):
+            tab.set_compact(compact)
 
     def on_mount(self) -> None:
         self.register_theme(EVALFLOW_THEME)
@@ -454,39 +368,24 @@ class EvalflowApp(App):
             shutil.rmtree(config.output_dir, ignore_errors=True)
 
     def compose(self) -> ComposeResult:
-        with Horizontal(id="app-shell"):
-            with Vertical(id="sidebar"):
-                yield BrandHeader()
-                with Vertical(id="sidebar-nav"):
-                    for view_id, label, key, hint in NAV_ITEMS:
-                        item = NavItem(view_id, label, key)
-                        if view_id == "pull":
-                            item.add_class("active")
-                        yield item
-                yield Static("", id="sidebar-spacer")
-                with Vertical(id="sidebar-foot"):
-                    yield NavItem("", "Help",         "?", app_action="toggle_help",  small=True)
-                    yield NavItem("", "Setup wizard", "w", app_action="open_wizard",  small=True)
-                    yield NavItem("", "Quit",         "q", app_action="quit",         small=True, danger=True)
-            with Vertical(id="main"):
-                with ContentSwitcher(id="content", initial="pull"):
-                    yield PullView(id="pull")
-                    yield ResultsView(id="results")
-                    yield LeaderboardView(id="leaderboard")
-                    yield MergeView(id="merge")
-                    yield PublishView(id="publish")
-                    yield RunView(id="run")
-                    yield MonitorView(id="monitor")
-                yield StatusBar()
+        yield TabBar()
+        with ContentSwitcher(id="content", initial="pull"):
+            yield PullView(id="pull")
+            yield ResultsView(id="results")
+            yield LeaderboardView(id="leaderboard")
+            yield MergeView(id="merge")
+            yield PublishView(id="publish")
+            yield RunView(id="run")
+            yield MonitorView(id="monitor")
+        yield StatusBar()
         yield HelpView(id="help-overlay")
 
     def switch_view(self, view_id: str) -> None:
         self.query_one(ContentSwitcher).current = view_id
-        for item in self.query(NavItem):
-            if not item.has_class("small"):
-                item.remove_class("active")
-                if item.view_id == view_id:
-                    item.add_class("active")
+        for item in self.query(TabItem):
+            item.remove_class("active")
+            if item.view_id == view_id:
+                item.add_class("active")
         view = self.query_one(f"#{view_id}")
         if hasattr(view, "on_activate"):
             view.on_activate()
@@ -506,9 +405,6 @@ class EvalflowApp(App):
         overlay.toggle_class("visible")
         if "visible" in overlay.classes:
             overlay.query_one("#help-scroll").focus()
-
-    def action_toggle_sidebar(self) -> None:
-        self.toggle_class("no-sidebar")
 
     def action_toggle_current_log_focus(self) -> None:
         current = self.query_one(ContentSwitcher).current
