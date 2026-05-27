@@ -330,11 +330,16 @@ class PullView(Vertical):
 
             config.ensure_kaggle_json()
             from core.auth import make_bearer_client
-            kag_client, _ = make_bearer_client(
+            kag_client, bearer_ok = make_bearer_client(
                 config.kaggle_username,
                 config.kaggle_key,
                 log=log.write_line,
             )
+            if not bearer_ok:
+                log.write_line(
+                    "[!] OAuth not configured — only the latest run per task will be fetched.\n"
+                    "   Run the wizard (w) and complete the OAuth step to get all runs."
+                )
         except ImportError:
             log.write_line("[x] kaggle / kagglesdk package not installed.")
             return
@@ -511,6 +516,11 @@ class PullView(Vertical):
         except Exception as exc:
             exc_str = str(exc)
             if "403" in exc_str or "404" in exc_str:
+                log.write_line(
+                    "   [!] Tasks API requires OAuth — Bearer auth not available.\n"
+                    "   Fetching latest run only via Kernels API (1 model per task).\n"
+                    "   To get all runs: run the wizard (w) and complete the OAuth step."
+                )
                 return self._pull_one_task_kernels(kag_client, task_slug, out_dir, log)
             log.write_line(f"   [x] Failed to list runs for {task_slug}: {exc_str}")
             return []

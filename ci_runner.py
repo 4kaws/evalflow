@@ -92,6 +92,7 @@ def pull_task(kag_client, task_slug: str, out_dir: Path) -> list[Path]:
     except Exception as exc:
         exc_str = str(exc)
         if "403" in exc_str or "404" in exc_str:
+            print("   [!] Tasks API requires OAuth — falling back to Kernels API (latest run only).")
             return _pull_task_kernels(kag_client, task_slug, out_dir)
         print(f"   [x] Failed to list runs: {exc_str}", file=sys.stderr)
         return []
