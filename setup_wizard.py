@@ -607,6 +607,7 @@ class SetupWizard(App):
                 summary.append(f"  [!]   {key} = (not set)")
 
         ENV_FILE.write_text("\n".join(lines) + "\n")
+        ENV_FILE.chmod(0o600)
 
         username   = self._config.get("KAGGLE_USERNAME", "")
         has_key    = bool(self._config.get("KAGGLE_KEY"))

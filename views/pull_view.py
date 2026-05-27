@@ -533,7 +533,7 @@ class PullView(Vertical):
                 for name in zf.namelist():
                     if not name.endswith(".run.json"):
                         continue
-                    dest = out_dir / name
+                    dest = out_dir / Path(name).name
                     if dest.exists():
                         saved.append(dest)
                         continue

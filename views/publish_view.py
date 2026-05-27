@@ -138,6 +138,7 @@ def _load_publish_state() -> dict:
 def _save_publish_state(state: dict) -> None:
     try:
         _STATE_FILE.write_text(json.dumps(state))
+        _STATE_FILE.chmod(0o600)
     except Exception:
         pass
 

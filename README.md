@@ -84,7 +84,7 @@ Kaggle (browser)                              Evalflow (terminal)
 ### Linux
 
 ```bash
-# Python 3.12+ is required
+# Python 3.14+ is required
 python3 --version
 
 git clone https://github.com/4kaws/evalflow.git
@@ -103,8 +103,8 @@ python evalflow.py
 ### macOS
 
 ```bash
-# Install Python 3.12+ via Homebrew if needed
-brew install python@3.12
+# Install Python 3.14+ via Homebrew if needed
+brew install python@3.14
 
 git clone https://github.com/4kaws/evalflow.git
 cd evalflow
@@ -139,9 +139,9 @@ Restart your machine when prompted. This installs Ubuntu by default.
 **2. Open Ubuntu from the Start menu**, then inside WSL:
 
 ```bash
-# Update packages and install Python 3.12+
+# Update packages and install Python 3.14+
 sudo apt update && sudo apt upgrade -y
-sudo apt install python3.12 python3.12-venv python3-pip git -y
+sudo apt install python3.14 python3.14-venv python3-pip git -y
 
 # Clone Evalflow
 git clone https://github.com/4kaws/evalflow.git
@@ -175,6 +175,10 @@ The setup wizard launches automatically on first run and collects:
 
 - **Kaggle credentials** — username and legacy API key
   Get yours at: **kaggle.com → Settings → Account → Legacy API Credentials → Create Legacy API Key**
+- **Kaggle OAuth login** *(optional)* — unlocks the Run tab for scheduling model runs directly from the terminal
+  Click **Generate Login URL**, visit the URL in a browser, then paste the verification code shown by Kaggle.
+  You can skip this step if you only need Pull / Merge / Publish.
+  To authenticate later (or switch accounts), use the **Kaggle Login** button in the Run tab.
 - **GitHub token and repo** — needed for the daily cloud schedule to sync your watcher config
   Create a fine-grained PAT at **github.com → Settings → Developer settings → Fine-grained tokens** with **Secrets: read & write** permission on your repo
 

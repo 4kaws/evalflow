@@ -47,6 +47,7 @@ def load_manifest() -> dict:
 
 def save_manifest(manifest: dict) -> None:
     MANIFEST_FILE.write_text(json.dumps(manifest, indent=2))
+    MANIFEST_FILE.chmod(0o600)
 
 
 # ── Task discovery ────────────────────────────────────────────────────────────
