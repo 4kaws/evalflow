@@ -59,14 +59,12 @@ class RunView(Vertical):
 
     #run-top {
         layout: horizontal;
-        height: auto;
-        min-height: 16;
+        height: 16;
     }
 
     #tasks-panel {
         width: 1fr;
-        height: auto;
-        min-height: 16;
+        height: 1fr;
         margin-right: 1;
     }
 
@@ -87,8 +85,7 @@ class RunView(Vertical):
 
     #schedule-panel {
         width: 1fr;
-        height: auto;
-        min-height: 16;
+        height: 1fr;
     }
 
     .field-row {
@@ -117,8 +114,8 @@ class RunView(Vertical):
     #schedule-btn-row Button { margin-right: 1; }
 
     #runs-table {
-        height: 1fr;
-        min-height: 4;
+        height: 5;
+        min-height: 3;
         background: $surface;
         border: round #D0D7DE;
         margin-top: 0;

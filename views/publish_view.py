@@ -211,6 +211,10 @@ class PublishView(Vertical):
 
     #publish-body { padding: 1 3; height: 1fr; }
 
+    /* Controls section shrinks to fit form; results section expands to fill */
+    #publish-controls { height: auto; }
+    #publish-results  { height: 1fr; }
+
     .section-title { color: #636E7B; text-style: bold; margin-top: 1; margin-bottom: 0; }
     .field-row { layout: horizontal; height: 3; align: left middle; margin-bottom: 0; }
     .field-label { width: 20; height: 3; color: #636E7B; content-align: right middle; padding-right: 2; }
@@ -222,7 +226,7 @@ class PublishView(Vertical):
         min-height: 4;
         background: $surface;
         border: round #D0D7DE;
-        margin-top: 1;
+        margin-top: 0;
         padding: 0 1;
     }
     #url-row {
@@ -263,69 +267,71 @@ class PublishView(Vertical):
             "Upload merged datasets to Kaggle Datasets.",
         )
         with Vertical(id="publish-body"):
-            yield Static(
-                "Reads KAGGLE_USERNAME + KAGGLE_KEY from .env or ~/.kaggle/kaggle.json",
-                id="creds-note",
-            )
-
-            yield Static(self._files_text(), id="files-panel")
-
-            with Horizontal(classes="field-row"):
-                yield Label("Kaggle username:", classes="field-label")
-                yield Input(
-                    value=config.kaggle_username or "",
-                    placeholder="your-kaggle-username",
-                    id="username-input",
-                    classes="field-input",
+            with Vertical(id="publish-controls"):
+                yield Static(
+                    "Reads KAGGLE_USERNAME + KAGGLE_KEY from .env or ~/.kaggle/kaggle.json",
+                    id="creds-note",
                 )
 
-            with Horizontal(classes="field-row"):
-                yield Label("Dataset title:", classes="field-label")
-                yield Input(
-                    value=self._state.get("title", ""),
-                    placeholder="e.g. My Benchmark Results",
-                    id="title-input",
-                    classes="field-input",
-                )
+                yield Static(self._files_text(), id="files-panel")
 
-            with Horizontal(classes="field-row"):
-                yield Label("Dataset slug:", classes="field-label")
-                yield Input(
-                    value=self._state.get("slug", ""),
-                    placeholder="e.g. my-benchmark-results  (URL-safe, no spaces)",
-                    id="slug-input",
-                    classes="field-input",
-                )
+                with Horizontal(classes="field-row"):
+                    yield Label("Kaggle username:", classes="field-label")
+                    yield Input(
+                        value=config.kaggle_username or "",
+                        placeholder="your-kaggle-username",
+                        id="username-input",
+                        classes="field-input",
+                    )
 
-            with Horizontal(classes="field-row"):
-                yield Label("Description:", classes="field-label")
-                yield Input(
-                    value=self._state.get("description", ""),
-                    placeholder="Describe your benchmark and what models were evaluated",
-                    id="description-input",
-                    classes="field-input",
-                )
+                with Horizontal(classes="field-row"):
+                    yield Label("Dataset title:", classes="field-label")
+                    yield Input(
+                        value=self._state.get("title", ""),
+                        placeholder="e.g. My Benchmark Results",
+                        id="title-input",
+                        classes="field-input",
+                    )
 
-            with Horizontal(classes="field-row"):
-                yield Label("License:", classes="field-label")
-                yield Select(
-                    _LICENSE_OPTS,
-                    value=self._state.get("license", DEFAULT_LICENSE),
-                    id="license-select",
-                    classes="field-input",
-                )
+                with Horizontal(classes="field-row"):
+                    yield Label("Dataset slug:", classes="field-label")
+                    yield Input(
+                        value=self._state.get("slug", ""),
+                        placeholder="e.g. my-benchmark-results  (URL-safe, no spaces)",
+                        id="slug-input",
+                        classes="field-input",
+                    )
 
-            yield Checkbox("Public dataset", value=self._state.get("public", True), id="public-switch")
+                with Horizontal(classes="field-row"):
+                    yield Label("Description:", classes="field-label")
+                    yield Input(
+                        value=self._state.get("description", ""),
+                        placeholder="Describe your benchmark and what models were evaluated",
+                        id="description-input",
+                        classes="field-input",
+                    )
 
-            with Horizontal(id="btn-row"):
-                yield Button("Publish New",     id="publish-btn", variant="primary")
-                yield Button("Update Existing", id="update-btn",  variant="default")
+                with Horizontal(classes="field-row"):
+                    yield Label("License:", classes="field-label")
+                    yield Select(
+                        _LICENSE_OPTS,
+                        value=self._state.get("license", DEFAULT_LICENSE),
+                        id="license-select",
+                        classes="field-input",
+                    )
 
-            yield Static("Publish Log", classes="section-title")
-            yield Log(id="publish-log", highlight=True)
-            with Horizontal(id="url-row"):
-                yield Static("", id="url-panel")
-                yield Button("Open Dataset on Kaggle", id="open-dataset-btn", variant="default", disabled=True)
+                yield Checkbox("Public dataset", value=self._state.get("public", True), id="public-switch")
+
+                with Horizontal(id="btn-row"):
+                    yield Button("Publish New",     id="publish-btn", variant="primary")
+                    yield Button("Update Existing", id="update-btn",  variant="default")
+
+            with Vertical(id="publish-results"):
+                yield Static("Publish Log", classes="section-title")
+                yield Log(id="publish-log", highlight=True)
+                with Horizontal(id="url-row"):
+                    yield Static("", id="url-panel")
+                    yield Button("Open Dataset on Kaggle", id="open-dataset-btn", variant="default", disabled=True)
 
     def set_merged_csvs(self, sft_path: Path, pref_path: Path) -> None:
         """Called by MergeView after a successful merge."""

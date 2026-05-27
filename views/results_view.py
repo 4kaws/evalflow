@@ -66,7 +66,7 @@ class ResultsView(Vertical):
         padding: 0 1;
     }
 
-    #detail-scroll {
+    #detail-panel {
         height: 1fr;
         min-height: 6;
         margin-top: 1;

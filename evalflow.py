@@ -360,13 +360,16 @@ class EvalflowApp(App):
     App.tiny #help-box { width: 95%; }
 
     /* short: < 42 rows — shrink fixed-size form widgets         */
-    App.short #tasks-table   { height: 6; }
-    App.short #models-list   { height: 5; }
+    App.short #tasks-table   { height: 4; }
+    App.short #models-list   { height: 4; }
     App.short #watcher-table { height: 4; }
-    App.short #run-top       { min-height: 12; }
+    App.short #run-top       { height: 10; }
+    App.short #runs-table    { height: 3; }
 
-    /* tall: >= 55 rows — grow watcher table                     */
+    /* tall: >= 55 rows — grow watcher table and run controls    */
     App.tall  #watcher-table { height: 10; }
+    App.tall  #run-top       { height: 20; }
+    App.tall  #runs-table    { height: 8; }
     """
 
     BINDINGS = [
