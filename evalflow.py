@@ -385,9 +385,21 @@ class EvalflowApp(App):
     App.short NavItem.small            { height: 1; }
     App.short #sidebar-nav             { padding: 0; }
     App.short #sidebar-foot            { padding: 0; }
+    App.short PageHeader               { min-height: 3; padding: 0 2; }
+    App.short PageHeader #ph-subtitle  { display: none; }
+    App.short .field-row               { height: 2; }
+    App.short .field-label             { height: 2; }
+    App.short #btn-row                 { margin-top: 0; }
+    App.short #pull-body               { padding: 0 2; }
+    App.short #merge-body              { padding: 0 2; }
+    App.short #run-body                { padding: 0 2; }
+    App.short #publish-body            { padding: 0 2; }
 
     /* tiny-h: < 30 rows — hide sidebar entirely                 */
     App.tiny-h #sidebar { display: none; }
+
+    /* no-sidebar: user-toggled sidebar hide (\\ key)            */
+    App.no-sidebar #sidebar { display: none; }
 
     /* tall: >= 55 rows — grow watcher table and run controls    */
     App.tall  #watcher-table { height: 10; }
@@ -396,9 +408,11 @@ class EvalflowApp(App):
     """
 
     BINDINGS = [
-        Binding("q",      "quit",            "Quit",        show=False),
-        Binding("?",      "toggle_help",     "Help",        show=False),
-        Binding("w",      "open_wizard",     "Setup",       show=False),
+        Binding("q",      "quit",                      "Quit",         show=False),
+        Binding("?",      "toggle_help",               "Help",         show=False),
+        Binding("w",      "open_wizard",               "Setup",        show=False),
+        Binding("\\",     "toggle_sidebar",            "Sidebar",      show=False),
+        Binding("ctrl+l", "toggle_current_log_focus",  "Expand log",   show=False),
         Binding("1",      "nav_pull",        "Pull",        show=False),
         Binding("2",      "nav_results",     "Results",     show=False),
         Binding("3",      "nav_leaderboard", "Leaderboard", show=False),
@@ -411,9 +425,16 @@ class EvalflowApp(App):
         Binding("up",     "focus_previous",  "",            show=False),
     ]
 
+    def _apply_responsive(self) -> None:
+        w, h = self.size.width, self.size.height
+        self.set_class(w < 110, "narrow")
+        self.set_class(w < 85,  "tiny")
+        self.set_class(h < 42,  "short")
+        self.set_class(h >= 55, "tall")
+        self.set_class(h < 30,  "tiny-h")
+
     def on_resize(self, event: Resize) -> None:
-        w = event.size.width
-        h = event.size.height
+        w, h = event.size.width, event.size.height
         self.set_class(w < 110, "narrow")
         self.set_class(w < 85,  "tiny")
         self.set_class(h < 42,  "short")
@@ -423,6 +444,9 @@ class EvalflowApp(App):
     def on_mount(self) -> None:
         self.register_theme(EVALFLOW_THEME)
         self.theme = "evalflow"
+        # Apply responsive classes for initial terminal size (on_resize may fire
+        # before the first full render cycle so we also apply after refresh).
+        self.call_after_refresh(self._apply_responsive)
         # Wipe outputs from last session so every run starts fresh.
         import shutil
         from config import config
@@ -482,6 +506,20 @@ class EvalflowApp(App):
         overlay.toggle_class("visible")
         if "visible" in overlay.classes:
             overlay.query_one("#help-scroll").focus()
+
+    def action_toggle_sidebar(self) -> None:
+        self.toggle_class("no-sidebar")
+
+    def action_toggle_current_log_focus(self) -> None:
+        current = self.query_one(ContentSwitcher).current
+        if not current:
+            return
+        try:
+            view = self.query_one(f"#{current}")
+            if hasattr(view, "action_toggle_log_focus"):
+                view.action_toggle_log_focus()
+        except Exception:
+            pass
 
     def action_nav_pull(self):        self.switch_view("pull")
     def action_nav_results(self):     self.switch_view("results")
