@@ -35,22 +35,17 @@ def make_bearer_client(
             creds = KaggleCredentials(client=base_client, refresh_token=refresh_token)
             token = creds.get_access_token()
             if token:
-                _log(f"[ok] Authenticated as {username} (Bearer via KAGGLE_REFRESH_TOKEN)")
+                _log(f"Authenticated as {username}")
                 return KaggleClient(api_token=token), True
 
         creds = KaggleCredentials.load(base_client)
         if creds:
             token = creds.get_access_token()
             if token:
-                _log(f"[ok] Authenticated as {username} (Bearer)")
+                _log(f"Authenticated as {username}")
                 return KaggleClient(api_token=token), True
     except Exception:
         pass
 
-    _log(
-        f"[ok] Authenticated as {username}\n"
-        "   [!] No OAuth token — Benchmark Tasks API unavailable for non-owned tasks.\n"
-        "       Local : run `kaggle auth login` then restart.\n"
-        "       CI    : add KAGGLE_REFRESH_TOKEN as a repo secret."
-    )
+    _log(f"Authenticated as {username}")
     return base_client, False

@@ -223,13 +223,12 @@ class SetupWizard(App):
             yield WizardStep(
                 Static("Kaggle OAuth Login", classes="step-title"),
                 Static(
-                    "Optional — only needed for the Run tab (List My Tasks, Schedule Runs).\n"
-                    "You can skip this now and click 'Kaggle Login' inside the Run tab later.",
+                    "Recommended — needed to pull all model runs and to use the Run tab.\n"
+                    "Without it, Pull fetches only the latest model run per task.\n"
+                    "You can skip now and click 'Kaggle Login' in the Run tab later.",
                     classes="note-optional",
                 ),
                 Static(
-                    "The Run tab calls a Benchmark Tasks API that requires an OAuth Bearer\n"
-                    "token. Your API key alone is not enough for task management.\n\n"
                     "  1. Click Generate Login URL\n"
                     "  2. Open the URL in your browser and sign in to Kaggle\n"
                     "  3. Kaggle shows a verification code — paste it in the field below",
@@ -626,10 +625,10 @@ class SetupWizard(App):
         if username and has_key and has_github:
             status = (
                 "Ready. GitHub sync enabled.\n\n"
-                "  Checking EVALFLOW_MANIFEST secret on GitHub..."
+                "  Checking GitHub secrets…"
             )
         elif username and has_key:
-            status = "Ready. (GitHub sync not configured — 'Sync Watchers → Secret' won't work)"
+            status = "Ready. (GitHub not configured — CI pipeline and watcher sync unavailable)"
         else:
             status = "Warning: Kaggle credentials incomplete — pull/publish may fail."
 
@@ -648,25 +647,46 @@ class SetupWizard(App):
     def _bootstrap_manifest_secret(self) -> None:
         """
         Background thread: seeds EVALFLOW_MANIFEST on GitHub with '{}' if it does not
-        already exist. This runs automatically whenever the user completes the GitHub
-        credentials step, so the daily CI schedule works immediately without any manual
-        secret creation in GitHub Settings.
+        already exist, and pushes KAGGLE_REFRESH_TOKEN if OAuth was completed.
+        Runs automatically when the user finishes the wizard so CI works without any
+        manual secret creation in GitHub Settings.
         """
         token = self._config.get("GITHUB_TOKEN", "")
         repo  = self._config.get("GITHUB_REPO", "")
         if not token or not repo:
             return
-        from core.github_secret import ensure_secret_seeded
+
+        from core.github_secret import ensure_secret_seeded, put_secret
+
         result = ensure_secret_seeded(token, repo, "EVALFLOW_MANIFEST", b"{}")
         self.call_from_thread(self._append_done_summary, result)
 
+        creds_path = Path.home() / ".kaggle" / "credentials.json"
+        if creds_path.exists():
+            try:
+                refresh_token = json.loads(creds_path.read_text()).get("refresh_token", "")
+                if refresh_token:
+                    rt_result = put_secret(
+                        token, repo, "KAGGLE_REFRESH_TOKEN",
+                        refresh_token.encode(),
+                    )
+                    self.call_from_thread(self._append_done_summary, rt_result)
+            except Exception as exc:
+                self.call_from_thread(
+                    self._append_done_summary,
+                    f"[!]   KAGGLE_REFRESH_TOKEN: could not read credentials ({exc})",
+                )
+
     def _append_done_summary(self, line: str) -> None:
         try:
-            base = self._done_summary_base.replace(
-                "  Checking EVALFLOW_MANIFEST secret on GitHub...", f"  {line}"
-            )
-            self._done_summary_base = base
-            self.query_one("#done-summary").update(base)
+            placeholder = "  Checking GitHub secrets…"
+            if placeholder in self._done_summary_base:
+                self._done_summary_base = self._done_summary_base.replace(
+                    placeholder, f"  {line}"
+                )
+            else:
+                self._done_summary_base += f"\n  {line}"
+            self.query_one("#done-summary").update(self._done_summary_base)
         except Exception:
             pass
 

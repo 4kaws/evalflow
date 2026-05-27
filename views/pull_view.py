@@ -454,7 +454,6 @@ class PullView(Vertical):
             except Exception as exc:
                 if "429" not in str(exc) or delay is None:
                     raise
-                log.write_line(f"   (rate limited on {label}, retrying in {delay}s…)")
                 time.sleep(delay)
 
     def _pull_one_task(
@@ -512,9 +511,6 @@ class PullView(Vertical):
         except Exception as exc:
             exc_str = str(exc)
             if "403" in exc_str or "404" in exc_str:
-                # Benchmark Tasks API requires task ownership. Fall back to the
-                # Kernels API, which works for any public task regardless of owner.
-                log.write_line(f"   (Benchmark Tasks API: {exc_str[:50]} — trying Kernels API…)")
                 return self._pull_one_task_kernels(kag_client, task_slug, out_dir, log)
             log.write_line(f"   [x] Failed to list runs for {task_slug}: {exc_str}")
             return []

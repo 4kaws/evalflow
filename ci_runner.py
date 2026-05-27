@@ -47,7 +47,6 @@ def _api_call_with_retry(call, label: str):
         except Exception as exc:
             if "429" not in str(exc) or delay is None:
                 raise
-            print(f"   (rate limited on {label}, retrying in {delay}s…)")
             time.sleep(delay)
 
 
@@ -93,7 +92,6 @@ def pull_task(kag_client, task_slug: str, out_dir: Path) -> list[Path]:
     except Exception as exc:
         exc_str = str(exc)
         if "403" in exc_str or "404" in exc_str:
-            print(f"   (Tasks API unavailable — falling back to Kernels API; only latest run fetched)")
             return _pull_task_kernels(kag_client, task_slug, out_dir)
         print(f"   [x] Failed to list runs: {exc_str}", file=sys.stderr)
         return []
@@ -186,13 +184,8 @@ def main() -> None:
     )
 
     if not bearer_ok:
-        print(
-            "\n⚠  Running without Bearer auth — only the latest model run will be fetched per task.\n"
-            "   To get all model runs:\n"
-            "     Local : kaggle auth login\n"
-            "     CI    : add KAGGLE_REFRESH_TOKEN as a repo secret\n"
-            "   (see README for how to extract the refresh token)\n"
-        )
+        print("⚠  OAuth not configured — only the latest run per task will be fetched.")
+        print("   Run `kaggle auth login` or set KAGGLE_REFRESH_TOKEN to get all runs.\n")
 
     # ── Discover tasks ────────────────────────────────────────────────
     print(f"\n🔍 Discovering tasks under: {args.slug}")

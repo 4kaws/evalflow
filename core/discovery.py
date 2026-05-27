@@ -37,7 +37,7 @@ def discover_tasks(
                     task_slugs.add(short)
         if task_slugs:
             return [f"{username}/{s}" for s in sorted(task_slugs)]
-    except Exception as exc:
-        write(f"   (leaderboard API failed: {exc})")
+    except Exception:
+        pass
 
     return []
