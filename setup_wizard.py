@@ -1,10 +1,18 @@
 """
 Setup Wizard — shown on first run when credentials are not configured.
-Guides the user through setting MODEL_PROXY_API_KEY and KAGGLE_* credentials,
-then writes a .env file and re-launches the main app.
+Guides the user through Kaggle API key, Kaggle OAuth login, and GitHub
+integration, then writes a .env file and re-launches the main app.
 """
+from __future__ import annotations
 
+import base64
+import hashlib
+import json
 import os
+import secrets
+import urllib.parse
+import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from textual import on, work
@@ -39,12 +47,16 @@ _ASCII_LOGO = """\
 [bold $primary]╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝     ╚══════╝ ╚═════╝  ╚══╝╚══╝[/bold $primary]\
 """
 
-
 ENV_FILE = Path(".env")
+
+_OAUTH_REDIRECT = "https://www.kaggle.com/account/api/oauth/token"
+_OAUTH_SCOPE    = "resources.admin:*"
+_OAUTH_CLIENT   = "kagglesdk"
 
 STEPS = [
     "welcome",
     "kaggle_api",
+    "oauth",
     "github",
     "done",
 ]
@@ -116,6 +128,15 @@ class SetupWizard(App):
         color: $text-muted;
         margin-top: 1;
     }
+    #oauth-url-display {
+        color: $primary;
+        margin-top: 1;
+        margin-bottom: 1;
+    }
+    #oauth-status {
+        margin-top: 1;
+        margin-bottom: 1;
+    }
     """
 
     BINDINGS = [
@@ -125,16 +146,18 @@ class SetupWizard(App):
         Binding("right",  "nav_right", "",   show=False),
     ]
 
-    # Ordered input IDs for each step that has form fields
+    # Ordered input IDs for steps that have form fields.
+    # Step 2 (oauth) is handled separately — the code input appears dynamically.
     _STEP_INPUTS: dict[int, list[str]] = {
         1: ["kaggle-username", "kaggle-key"],
-        2: ["github-token", "github-repo"],
+        3: ["github-token", "github-repo"],
     }
 
     def __init__(self):
         super().__init__()
         self._step_index = 0
         self._config: dict[str, str] = {}
+        self._oauth_state: dict | None = None
         # Load existing values so we can pre-populate fields
         self._existing: dict[str, str] = {}
         if ENV_FILE.exists():
@@ -196,7 +219,37 @@ class SetupWizard(App):
                 classes="hidden",
             )
 
-            # Step 2: GitHub credentials
+            # Step 2: Kaggle OAuth
+            yield WizardStep(
+                Static("Kaggle OAuth Login", classes="step-title"),
+                Static(
+                    "Optional — only needed for the Run tab (List My Tasks, Schedule Runs).\n"
+                    "You can skip this now and click 'Kaggle Login' inside the Run tab later.",
+                    classes="note-optional",
+                ),
+                Static(
+                    "The Run tab calls a Benchmark Tasks API that requires an OAuth Bearer\n"
+                    "token. Your API key alone is not enough for task management.\n\n"
+                    "  1. Click Generate Login URL\n"
+                    "  2. Open the URL in your browser and sign in to Kaggle\n"
+                    "  3. Kaggle shows a verification code — paste it in the field below",
+                    classes="step-body",
+                ),
+                Static("", id="oauth-status", classes="note-info"),
+                Button("Generate Login URL", id="oauth-gen-btn", variant="primary"),
+                Static("", id="oauth-url-display", classes="hidden"),
+                Label("Verification code:", classes="field-label hidden", id="oauth-code-label"),
+                Input(
+                    id="oauth-code",
+                    placeholder="Paste the code shown by Kaggle…",
+                    classes="hidden",
+                ),
+                Button("Verify Code", id="oauth-verify-btn", variant="default", classes="hidden"),
+                id="step-oauth",
+                classes="hidden",
+            )
+
+            # Step 3: GitHub credentials
             yield WizardStep(
                 Static("GitHub Integration (optional)", classes="step-title"),
                 Static(
@@ -230,7 +283,7 @@ class SetupWizard(App):
                 classes="hidden",
             )
 
-            # Step 3: Done
+            # Step 4: Done
             yield WizardStep(
                 Static("All done!", classes="step-title"),
                 Static("", id="done-summary", classes="step-body"),
@@ -246,11 +299,31 @@ class SetupWizard(App):
     def on_mount(self) -> None:
         self.register_theme(EVALFLOW_THEME)
         self.theme = "evalflow"
+        self._prefill_oauth_status()
         self._update_step()
         self.query_one("#next-btn", Button).focus()
 
+    def _prefill_oauth_status(self) -> None:
+        creds_path = Path.home() / ".kaggle" / "credentials.json"
+        try:
+            if creds_path.exists():
+                data = json.loads(creds_path.read_text())
+                username = data.get("username", "unknown")
+                self.query_one("#oauth-status").update(
+                    f"Already authenticated as [{username}] — click Next to keep, "
+                    "or Generate Login URL to switch accounts."
+                )
+            else:
+                self.query_one("#oauth-status").update(
+                    "Not yet authenticated — generate a login URL to enable the Run tab."
+                )
+        except Exception:
+            pass
+
     def _update_step(self) -> None:
-        step_ids = ["step-welcome", "step-kaggle-api", "step-github", "step-done"]
+        step_ids = [
+            "step-welcome", "step-kaggle-api", "step-oauth", "step-github", "step-done"
+        ]
         for i, sid in enumerate(step_ids):
             step = self.query_one(f"#{sid}")
             step.set_class(i != self._step_index, "hidden")
@@ -267,7 +340,7 @@ class SetupWizard(App):
         self.query_one("#back-btn", Button).set_class(self._step_index == 0, "hidden")
 
     # ------------------------------------------------------------------ #
-    #  Button handlers — call _advance_step directly (no action dispatch)  #
+    #  Button handlers                                                      #
     # ------------------------------------------------------------------ #
 
     @on(Button.Pressed, "#next-btn")
@@ -282,12 +355,63 @@ class SetupWizard(App):
     def on_skip(self) -> None:
         self._launch_app()
 
+    @on(Button.Pressed, "#oauth-gen-btn")
+    def _on_oauth_generate(self) -> None:
+        username, api_key = self._get_kaggle_creds()
+        if not username or not api_key:
+            self.query_one("#oauth-status").update(
+                "[!] Enter your Kaggle username and API key first (step 1)."
+            )
+            return
+
+        code_verifier = secrets.token_urlsafe(64)
+        digest = hashlib.sha256(code_verifier.encode()).digest()
+        code_challenge = base64.urlsafe_b64encode(digest).decode()
+        state = str(uuid.uuid4())
+
+        self._oauth_state = {
+            "code_verifier": code_verifier,
+            "state": state,
+            "username": username,
+            "api_key": api_key,
+        }
+
+        # Scope must not be percent-encoded with quote_plus — Kaggle rejects %2A for *
+        params = {
+            "response_type": "code",
+            "client_id": _OAUTH_CLIENT,
+            "redirect_uri": _OAUTH_REDIRECT,
+            "state": state,
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+            "response_mode": "query",
+        }
+        qs = urllib.parse.urlencode(params)
+        scope_qs = urllib.parse.quote(_OAUTH_SCOPE, safe="*:")
+        oauth_url = f"https://www.kaggle.com/api/v1/oauth2/authorize?{qs}&scope={scope_qs}"
+
+        self.query_one("#oauth-url-display").update(oauth_url)
+        self.query_one("#oauth-url-display").remove_class("hidden")
+        self.query_one("#oauth-code-label").remove_class("hidden")
+        self.query_one("#oauth-code").remove_class("hidden")
+        self.query_one("#oauth-verify-btn").remove_class("hidden")
+        self.query_one("#oauth-status").update("Waiting for verification code…")
+        self.query_one("#oauth-code", Input).focus()
+
+    @on(Button.Pressed, "#oauth-verify-btn")
+    def _on_oauth_verify_btn(self) -> None:
+        self._submit_oauth_code()
+
     # ------------------------------------------------------------------ #
-    #  Input Enter — cycle fields first, advance step on last field        #
+    #  Input Enter                                                          #
     # ------------------------------------------------------------------ #
 
     @on(Input.Submitted)
     def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "oauth-code":
+            self._submit_oauth_code()
+            return
+
         fields = self._STEP_INPUTS.get(self._step_index, [])
         iid = event.input.id
         if iid in fields:
@@ -299,12 +423,74 @@ class SetupWizard(App):
             return
         self._advance_step()
 
+    def _submit_oauth_code(self) -> None:
+        code = self.query_one("#oauth-code", Input).value.strip()
+        if not code:
+            self.query_one("#oauth-status").update("[!] Paste the verification code first.")
+            return
+        if not self._oauth_state:
+            self.query_one("#oauth-status").update("[!] Click Generate Login URL first.")
+            return
+        self._do_oauth_exchange(code)
+
+    # ------------------------------------------------------------------ #
+    #  OAuth exchange worker                                                #
+    # ------------------------------------------------------------------ #
+
+    @work(thread=True)
+    def _do_oauth_exchange(self, code: str) -> None:
+        self.call_from_thread(
+            lambda: self.query_one("#oauth-status").update("Exchanging code with Kaggle…")
+        )
+        try:
+            from kagglesdk import KaggleClient
+            from kagglesdk.kaggle_creds import KaggleCredentials
+            from kagglesdk.security.types.oauth_service import ExchangeOAuthTokenRequest
+
+            state = self._oauth_state
+            base_client = KaggleClient(
+                username=state["username"],
+                password=state["api_key"],
+            )
+
+            req = ExchangeOAuthTokenRequest()
+            req.code = code
+            req.code_verifier = state["code_verifier"]
+            req.grant_type = "authorization_code"
+            req.redirect_uri = _OAUTH_REDIRECT
+
+            resp = base_client.security.oauth_client.exchange_oauth_token(req)
+            creds = KaggleCredentials(
+                client=base_client,
+                refresh_token=resp.refreshToken,
+                access_token=resp.accessToken,
+                access_token_expiration=(
+                    datetime.now(timezone.utc) + timedelta(seconds=resp.expires_in)
+                ),
+                username=resp.username,
+                scopes=[_OAUTH_SCOPE],
+            )
+            creds.save()
+
+            def _on_success(u=resp.username):
+                self.query_one("#oauth-status").update(f"[ok] Authenticated as [{u}]")
+                self.query_one("#oauth-code", Input).add_class("hidden")
+                self.query_one("#oauth-verify-btn", Button).add_class("hidden")
+
+            self.call_from_thread(_on_success)
+
+        except Exception as exc:
+            self.call_from_thread(
+                lambda e=exc: self.query_one("#oauth-status").update(
+                    f"[x] Exchange failed: {e}"
+                )
+            )
+
     # ------------------------------------------------------------------ #
     #  Keyboard actions                                                     #
     # ------------------------------------------------------------------ #
 
     def action_enter_key(self) -> None:
-        """Enter: activate focused button, or advance step if no button focused."""
         focused = self.focused
         if isinstance(focused, Button):
             focused.press()
@@ -368,7 +554,9 @@ class SetupWizard(App):
         return btns
 
     def _focus_first_input(self) -> None:
-        step_ids = ["step-welcome", "step-kaggle-api", "step-github", "step-done"]
+        step_ids = [
+            "step-welcome", "step-kaggle-api", "step-oauth", "step-github", "step-done"
+        ]
         try:
             step = self.query_one(f"#{step_ids[self._step_index]}")
             inputs = step.query("Input")
@@ -379,6 +567,13 @@ class SetupWizard(App):
         except Exception:
             pass
 
+    def _get_kaggle_creds(self) -> tuple[str, str]:
+        username = (self._config.get("KAGGLE_USERNAME") or
+                    self._existing.get("KAGGLE_USERNAME", "")).strip()
+        api_key  = (self._config.get("KAGGLE_KEY") or
+                    self._existing.get("KAGGLE_KEY", "")).strip()
+        return username, api_key
+
     def _collect_step(self) -> None:
         if self._step_index == 1:  # kaggle credentials
             self._config.update({
@@ -387,11 +582,12 @@ class SetupWizard(App):
                 "OUTPUT_DIR":      "outputs",
                 "DATA_DIR":        "data",
             })
-        elif self._step_index == 2:  # github credentials
+        elif self._step_index == 3:  # github credentials (was 2 before oauth step)
             self._config.update({
                 "GITHUB_TOKEN": self.query_one("#github-token", Input).value.strip(),
                 "GITHUB_REPO":  self.query_one("#github-repo",  Input).value.strip(),
             })
+        # step 2 (oauth) writes directly to ~/.kaggle/credentials.json — nothing to collect
 
     def _write_env(self) -> None:
         if ENV_FILE.exists():
@@ -414,6 +610,17 @@ class SetupWizard(App):
         username   = self._config.get("KAGGLE_USERNAME", "")
         has_key    = bool(self._config.get("KAGGLE_KEY"))
         has_github = bool(self._config.get("GITHUB_TOKEN")) and bool(self._config.get("GITHUB_REPO"))
+
+        creds_path = Path.home() / ".kaggle" / "credentials.json"
+        if creds_path.exists():
+            try:
+                oauth_user = json.loads(creds_path.read_text()).get("username", "?")
+                oauth_line = f"  [+]   OAuth Bearer token for [{oauth_user}]"
+            except Exception:
+                oauth_line = "  [+]   OAuth Bearer token present"
+        else:
+            oauth_line = "  [!]   OAuth Bearer token not set — Run tab will be limited"
+
         if username and has_key and has_github:
             status = (
                 "Ready. GitHub sync enabled.\n\n"
@@ -423,9 +630,11 @@ class SetupWizard(App):
             status = "Ready. (GitHub sync not configured — 'Sync Watchers → Secret' won't work)"
         else:
             status = "Warning: Kaggle credentials incomplete — pull/publish may fail."
+
         self._done_summary_base = (
             f"Configuration saved to .env\n\n"
             + "\n".join(summary)
+            + f"\n{oauth_line}"
             + f"\n\n{status}\nPress Launch to open Evalflow."
         )
         self.query_one("#done-summary").update(self._done_summary_base)
@@ -440,9 +649,6 @@ class SetupWizard(App):
         already exist. This runs automatically whenever the user completes the GitHub
         credentials step, so the daily CI schedule works immediately without any manual
         secret creation in GitHub Settings.
-
-        If the secret already exists (re-running the wizard, or created by a prior monitor
-        sync), it is left untouched. The result is appended to the done-screen summary.
         """
         token = self._config.get("GITHUB_TOKEN", "")
         repo  = self._config.get("GITHUB_REPO", "")
@@ -453,7 +659,6 @@ class SetupWizard(App):
         self.call_from_thread(self._append_done_summary, result)
 
     def _append_done_summary(self, line: str) -> None:
-        """Replaces the '...checking...' placeholder with the actual secret result."""
         try:
             base = self._done_summary_base.replace(
                 "  Checking EVALFLOW_MANIFEST secret on GitHub...", f"  {line}"

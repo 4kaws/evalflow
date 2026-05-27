@@ -10,6 +10,13 @@ Uses the Kaggle Benchmark Tasks API:
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import secrets
+import urllib.parse
+import uuid
+from datetime import datetime, timedelta, timezone
+
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -18,6 +25,10 @@ from textual.widgets import Button, DataTable, Input, Log, Select, SelectionList
 
 from config import config
 from views.widgets import PageHeader
+
+_OAUTH_REDIRECT = "https://www.kaggle.com/account/api/oauth/token"
+_OAUTH_SCOPE    = "resources.admin:*"
+_OAUTH_CLIENT   = "kagglesdk"
 
 
 _STATE_ICONS = {
@@ -70,6 +81,9 @@ class RunView(Vertical):
 
     #manual-slug-row { layout: horizontal; height: 3; margin-top: 1; align: left middle; }
     #manual-slug-input { width: 1fr; margin-right: 1; }
+
+    #oauth-row { layout: horizontal; height: 3; margin-top: 0; align: left middle; }
+    #oauth-code-input { width: 1fr; margin-right: 1; }
 
     #schedule-panel {
         width: 1fr;
@@ -136,6 +150,7 @@ class RunView(Vertical):
         super().__init__(**kwargs)
         self._tasks: list[dict] = []
         self._selected_task_slug: str = ""
+        self._oauth_state: dict | None = None
 
     def compose(self) -> ComposeResult:
         yield PageHeader(
@@ -165,6 +180,14 @@ class RunView(Vertical):
                             id="manual-slug-input",
                         )
                         yield Button("Add Task", id="add-task-btn", variant="default")
+                    with Horizontal(id="oauth-row"):
+                        yield Button("Kaggle Login", id="oauth-login-btn", variant="default")
+                        yield Input(
+                            id="oauth-code-input",
+                            placeholder="Paste verification code from Kaggle…",
+                            classes="hidden",
+                        )
+                        yield Button("Verify Code", id="oauth-verify-run-btn", variant="primary", classes="hidden")
 
                 # Right: Schedule form with dropdowns
                 with Vertical(id="schedule-panel"):
@@ -249,6 +272,14 @@ class RunView(Vertical):
             except Exception:
                 pass
             log.write_line(f">> {url}")
+        elif bid == "oauth-login-btn":
+            self._start_oauth_login()
+        elif bid == "oauth-verify-run-btn":
+            code = self.query_one("#oauth-code-input", Input).value.strip()
+            if code:
+                self._do_oauth_exchange(code)
+            else:
+                self.query_one("#run-log", Log).write_line("[x] Paste the verification code first.")
 
     def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id == "task-select":
@@ -285,6 +316,12 @@ class RunView(Vertical):
             else:
                 log = self.query_one("#run-log", Log)
                 log.write_line("[x] Enter a slug in owner/task-slug format.")
+        elif event.input.id == "oauth-code-input":
+            code = event.value.strip()
+            if code:
+                self._do_oauth_exchange(code)
+            else:
+                self.query_one("#run-log", Log).write_line("[x] Paste the verification code first.")
 
     def _add_task_to_ui(self, slug: str) -> None:
         """Add a manually-entered task slug to the table and select without the API."""
@@ -556,6 +593,107 @@ class RunView(Vertical):
         except Exception as exc:
             self.app.call_from_thread(
                 lambda: log.write_line(f"[x] Schedule failed: {exc}")
+            )
+
+    # ------------------------------------------------------------------ #
+    #  OAuth re-authentication                                             #
+    # ------------------------------------------------------------------ #
+
+    @work(thread=True)
+    def _start_oauth_login(self) -> None:
+        log = self.query_one("#run-log", Log)
+        self.app.call_from_thread(lambda: log.write_line(">> Generating Kaggle OAuth login URL…"))
+
+        if not config.kaggle_username or not config.kaggle_key:
+            self.app.call_from_thread(
+                lambda: log.write_line("[x] Credentials not configured. Run setup wizard (w).")
+            )
+            return
+
+        code_verifier = secrets.token_urlsafe(64)
+        digest = hashlib.sha256(code_verifier.encode()).digest()
+        code_challenge = base64.urlsafe_b64encode(digest).decode()
+        state = str(uuid.uuid4())
+
+        self._oauth_state = {
+            "code_verifier": code_verifier,
+            "state": state,
+        }
+
+        params = {
+            "response_type": "code",
+            "client_id": _OAUTH_CLIENT,
+            "redirect_uri": _OAUTH_REDIRECT,
+            "state": state,
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+            "response_mode": "query",
+        }
+        qs = urllib.parse.urlencode(params)
+        scope_qs = urllib.parse.quote(_OAUTH_SCOPE, safe="*:")
+        oauth_url = f"https://www.kaggle.com/api/v1/oauth2/authorize?{qs}&scope={scope_qs}"
+
+        def _show(url=oauth_url):
+            log.write_line(f"\n  Open this URL in your browser:\n  {url}\n")
+            inp = self.query_one("#oauth-code-input", Input)
+            inp.remove_class("hidden")
+            inp.focus()
+            self.query_one("#oauth-verify-run-btn", Button).remove_class("hidden")
+
+        self.app.call_from_thread(_show)
+
+    @work(thread=True)
+    def _do_oauth_exchange(self, code: str) -> None:
+        log = self.query_one("#run-log", Log)
+        self.app.call_from_thread(lambda: log.write_line(">> Exchanging code with Kaggle…"))
+
+        if not self._oauth_state:
+            self.app.call_from_thread(
+                lambda: log.write_line("[x] Click Kaggle Login first to generate a URL.")
+            )
+            return
+
+        try:
+            from kagglesdk import KaggleClient
+            from kagglesdk.kaggle_creds import KaggleCredentials
+            from kagglesdk.security.types.oauth_service import ExchangeOAuthTokenRequest
+
+            config.ensure_kaggle_json()
+            base_client = KaggleClient(
+                username=config.kaggle_username,
+                password=config.kaggle_key,
+            )
+
+            req = ExchangeOAuthTokenRequest()
+            req.code = code
+            req.code_verifier = self._oauth_state["code_verifier"]
+            req.grant_type = "authorization_code"
+            req.redirect_uri = _OAUTH_REDIRECT
+
+            resp = base_client.security.oauth_client.exchange_oauth_token(req)
+            creds = KaggleCredentials(
+                client=base_client,
+                refresh_token=resp.refreshToken,
+                access_token=resp.accessToken,
+                access_token_expiration=(
+                    datetime.now(timezone.utc) + timedelta(seconds=resp.expires_in)
+                ),
+                username=resp.username,
+                scopes=[_OAUTH_SCOPE],
+            )
+            creds.save()
+
+            def _on_success(u=resp.username):
+                log.write_line(f"[ok] Authenticated as [{u}] — reloading tasks…")
+                self.query_one("#oauth-code-input", Input).add_class("hidden")
+                self.query_one("#oauth-verify-run-btn", Button).add_class("hidden")
+                self._load_my_tasks()
+
+            self.app.call_from_thread(_on_success)
+
+        except Exception as exc:
+            self.app.call_from_thread(
+                lambda e=exc: log.write_line(f"[x] OAuth exchange failed: {e}")
             )
 
     # ------------------------------------------------------------------ #
