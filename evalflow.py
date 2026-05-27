@@ -341,7 +341,7 @@ class EvalflowApp(App):
         display: block;
     }
 
-    /* ── Log expand button ──────────────────────────────────── */
+    /* ── Log header row (title + expand icon) ───────────────── */
     .log-header-row {
         height: 2;
         margin-top: 1;
@@ -352,20 +352,6 @@ class EvalflowApp(App):
         margin-top: 0;
         height: 2;
         content-align: left middle;
-    }
-    .log-expand-btn {
-        width: auto;
-        min-width: 3;
-        height: 1;
-        border: none;
-        background: transparent;
-        color: #636E7B;
-        padding: 0 1;
-    }
-    .log-expand-btn:hover {
-        background: $boost;
-        color: $primary;
-        border: none;
     }
 
     /* ── Responsive breakpoints ─────────────────────────────── */

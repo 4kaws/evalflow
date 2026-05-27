@@ -24,7 +24,7 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, DataTable, Input, Log, Select, SelectionList, Static
 
 from config import config
-from views.widgets import PageHeader
+from views.widgets import LogExpandIcon, PageHeader
 
 _OAUTH_REDIRECT = "https://www.kaggle.com/account/api/oauth/token"
 _OAUTH_SCOPE    = "resources.admin:*"
@@ -227,7 +227,7 @@ class RunView(Vertical):
 
                 with Horizontal(classes="log-header-row"):
                     yield Static("Log", classes="section-title")
-                    yield Button("⛶", classes="log-expand-btn")
+                    yield LogExpandIcon()
                 yield Log(id="run-log", highlight=True)
                 yield Static("", id="status-bar")
 
@@ -247,9 +247,6 @@ class RunView(Vertical):
     # ------------------------------------------------------------------ #
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.has_class("log-expand-btn"):
-            self.action_toggle_log_focus()
-            return
         bid = event.button.id
         if bid == "list-tasks-btn":
             self._load_my_tasks()

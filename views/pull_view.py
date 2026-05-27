@@ -16,7 +16,7 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Checkbox, DataTable, Input, Label, Log, Static
 
 from config import config
-from views.widgets import PageHeader
+from views.widgets import LogExpandIcon, PageHeader
 
 _HISTORY_FILE = Path(".evalflow_slug_history.json")
 _MAX_HISTORY  = 10
@@ -221,7 +221,7 @@ class PullView(Vertical):
             with Vertical(id="pull-results"):
                 with Horizontal(classes="log-header-row"):
                     yield Static("Pull Log", classes="section-title")
-                    yield Button("⛶", classes="log-expand-btn")
+                    yield LogExpandIcon()
                 yield Log(id="pull-log", highlight=True)
 
             with Vertical(id="pull-downloads"):
@@ -239,9 +239,6 @@ class PullView(Vertical):
     # ------------------------------------------------------------------ #
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.has_class("log-expand-btn"):
-            self.action_toggle_log_focus()
-            return
         bid = event.button.id
         if bid == "pull-btn":
             self._do_pull(download=True)

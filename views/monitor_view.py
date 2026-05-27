@@ -17,7 +17,7 @@ from core.discovery import discover_tasks as _discover_tasks_api
 from core.merger import SFT_FILENAME, PREF_FILENAME, row_count as _row_count
 from core.uploader import DEFAULT_LICENSE
 from monitor import MANIFEST_FILE, load_manifest as _load_manifest, save_manifest as _save_manifest
-from views.widgets import PageHeader
+from views.widgets import LogExpandIcon, PageHeader
 
 
 _WORKDIR       = str(Path(__file__).parent.parent)
@@ -258,7 +258,7 @@ class MonitorView(Vertical):
             with Vertical(id="monitor-right"):
                 with Horizontal(classes="log-header-row"):
                     yield Static("Activity Log", classes="section-title")
-                    yield Button("⛶", classes="log-expand-btn")
+                    yield LogExpandIcon()
                 yield Log(id="monitor-log", highlight=True)
 
     def on_mount(self) -> None:
@@ -407,9 +407,6 @@ class MonitorView(Vertical):
             )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.has_class("log-expand-btn"):
-            self.action_toggle_log_focus()
-            return
         bid = event.button.id
         if bid == "copy-log-btn":
             self._copy_log()

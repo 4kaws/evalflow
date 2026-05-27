@@ -9,7 +9,7 @@ from textual.widgets import Button, Checkbox, Input, Label, Log, Static
 
 from config import config
 from core.merger import discover_outputs, merge_outputs, validate_run_json
-from views.widgets import PageHeader
+from views.widgets import LogExpandIcon, PageHeader
 
 
 class MergeView(Vertical):
@@ -154,7 +154,7 @@ class MergeView(Vertical):
             with Vertical(id="merge-results"):
                 with Horizontal(classes="log-header-row"):
                     yield Static("Merge Log", classes="section-title")
-                    yield Button("⛶", classes="log-expand-btn")
+                    yield LogExpandIcon()
                 yield Log(id="merge-log", highlight=True)
                 yield Static("", id="stats-panel")
 
@@ -193,9 +193,6 @@ class MergeView(Vertical):
     # ------------------------------------------------------------------ #
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.has_class("log-expand-btn"):
-            self.action_toggle_log_focus()
-            return
         if event.button.id == "merge-btn":
             self._do_merge()
         elif event.button.id == "refresh-btn":

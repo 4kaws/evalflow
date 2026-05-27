@@ -13,7 +13,7 @@ from textual import work
 from config import config
 from core.merger import SFT_FILENAME, PREF_FILENAME, row_count
 from core.uploader import DEFAULT_LICENSE, upload_dataset
-from views.widgets import PageHeader
+from views.widgets import LogExpandIcon, PageHeader
 
 _STATE_FILE = Path(".evalflow_publish_state.json")
 
@@ -335,7 +335,7 @@ class PublishView(Vertical):
             with Vertical(id="publish-results"):
                 with Horizontal(classes="log-header-row"):
                     yield Static("Publish Log", classes="section-title")
-                    yield Button("⛶", classes="log-expand-btn")
+                    yield LogExpandIcon()
                 yield Log(id="publish-log", highlight=True)
                 with Horizontal(id="url-row"):
                     yield Static("", id="url-panel")
@@ -394,9 +394,6 @@ class PublishView(Vertical):
             )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.has_class("log-expand-btn"):
-            self.action_toggle_log_focus()
-            return
         if event.button.id == "publish-btn":
             self._do_publish(is_update=False)
         elif event.button.id == "update-btn":

@@ -35,6 +35,30 @@ def open_url(url: str) -> bool:
     return False
 
 
+class LogExpandIcon(Static):
+    """Clickable ⛶ icon that toggles the log-focused class on the parent view."""
+
+    DEFAULT_CSS = """
+    LogExpandIcon {
+        width: 3;
+        height: 1;
+        color: #636E7B;
+        content-align: center middle;
+        padding: 0 1;
+    }
+    LogExpandIcon:hover { color: #0969DA; text-style: bold; }
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__("⛶", **kwargs)
+
+    def on_click(self) -> None:
+        for ancestor in self.ancestors:
+            if hasattr(ancestor, "action_toggle_log_focus"):
+                ancestor.action_toggle_log_focus()
+                break
+
+
 class PageHeader(Horizontal):
     """Title + subtitle on the left, optional meta text on the right."""
 
