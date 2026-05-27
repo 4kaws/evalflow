@@ -684,7 +684,7 @@ class RunView(Vertical):
             creds.save()
 
             def _on_success(u=resp.username):
-                log.write_line(f"[ok] Authenticated as [{u}] — reloading tasks…")
+                log.write_line(f"Authenticated as {u} — reloading tasks…")
                 self.query_one("#oauth-code-input", Input).add_class("hidden")
                 self.query_one("#oauth-verify-run-btn", Button).add_class("hidden")
                 self._load_my_tasks()

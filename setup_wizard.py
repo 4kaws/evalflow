@@ -310,7 +310,7 @@ class SetupWizard(App):
                 data = json.loads(creds_path.read_text())
                 username = data.get("username", "unknown")
                 self.query_one("#oauth-status").update(
-                    f"Already authenticated as [{username}] — click Next to keep, "
+                    f"Already authenticated as {username} — click Next to keep, "
                     "or Generate Login URL to switch accounts."
                 )
             else:
@@ -473,7 +473,9 @@ class SetupWizard(App):
             creds.save()
 
             def _on_success(u=resp.username):
-                self.query_one("#oauth-status").update(f"[ok] Authenticated as [{u}]")
+                self.query_one("#oauth-status").update(
+                    f"Authenticated as {u} — success! Click Next to continue."
+                )
                 self.query_one("#oauth-code", Input).add_class("hidden")
                 self.query_one("#oauth-verify-btn", Button).add_class("hidden")
 
@@ -482,7 +484,7 @@ class SetupWizard(App):
         except Exception as exc:
             self.call_from_thread(
                 lambda e=exc: self.query_one("#oauth-status").update(
-                    f"[x] Exchange failed: {e}"
+                    f"Exchange failed: {e}"
                 )
             )
 
