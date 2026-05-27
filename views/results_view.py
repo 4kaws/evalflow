@@ -52,7 +52,7 @@ class ResultsView(Vertical):
     #refresh-btn { margin-left: 1; }
 
     #results-table {
-        height: 1fr;
+        height: 2fr;
         min-height: 6;
         margin-top: 1;
         background: $surface;
@@ -67,7 +67,7 @@ class ResultsView(Vertical):
     }
 
     #detail-scroll {
-        height: 12;
+        height: 1fr;
         min-height: 6;
         margin-top: 1;
         background: $surface;

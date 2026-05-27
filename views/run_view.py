@@ -124,8 +124,13 @@ class RunView(Vertical):
         margin-top: 0;
     }
 
+    #run-controls { height: auto; }
+
+    #run-results { height: 1fr; }
+
     #run-log {
-        height: 8;
+        height: 1fr;
+        min-height: 4;
         background: $surface;
         border: round #D0D7DE;
         margin-top: 0;
@@ -158,66 +163,68 @@ class RunView(Vertical):
             "Re-run and monitor benchmark task runs for models already in your benchmark.",
         )
         with Vertical(id="run-body"):
-            yield Static(
-                "To add a NEW model to a benchmark, open it on Kaggle and use the [dim]Add Models[/dim] button.\n"
-                "Once a model is added there, use [bold]Schedule Runs[/bold] here to re-trigger specific task runs.",
-                id="hint-note",
-                markup=True,
-            )
+            with Vertical(id="run-controls"):
+                yield Static(
+                    "To add a NEW model to a benchmark, open it on Kaggle and use the [dim]Add Models[/dim] button.\n"
+                    "Once a model is added there, use [bold]Schedule Runs[/bold] here to re-trigger specific task runs.",
+                    id="hint-note",
+                    markup=True,
+                )
 
-            with Horizontal(id="run-top"):
-                # Left: My Tasks table
-                with Vertical(id="tasks-panel"):
-                    yield Static("My Tasks", classes="section-title")
-                    yield DataTable(id="tasks-table", cursor_type="row", zebra_stripes=True)
-                    with Horizontal(id="tasks-btn-row"):
-                        yield Button("List My Tasks",           id="list-tasks-btn",   variant="primary")
-                        yield Button("Refresh Runs",            id="refresh-runs-btn", variant="default")
-                        yield Button("Open Benchmark on Kaggle", id="open-benchmark-btn", variant="default")
-                    with Horizontal(id="manual-slug-row"):
-                        yield Input(
-                            placeholder="owner/task-slug  (if List My Tasks fails)",
-                            id="manual-slug-input",
+                with Horizontal(id="run-top"):
+                    # Left: My Tasks table
+                    with Vertical(id="tasks-panel"):
+                        yield Static("My Tasks", classes="section-title")
+                        yield DataTable(id="tasks-table", cursor_type="row", zebra_stripes=True)
+                        with Horizontal(id="tasks-btn-row"):
+                            yield Button("List My Tasks",           id="list-tasks-btn",   variant="primary")
+                            yield Button("Refresh Runs",            id="refresh-runs-btn", variant="default")
+                            yield Button("Open Benchmark on Kaggle", id="open-benchmark-btn", variant="default")
+                        with Horizontal(id="manual-slug-row"):
+                            yield Input(
+                                placeholder="owner/task-slug  (if List My Tasks fails)",
+                                id="manual-slug-input",
+                            )
+                            yield Button("Add Task", id="add-task-btn", variant="default")
+                        with Horizontal(id="oauth-row"):
+                            yield Button("Kaggle Login", id="oauth-login-btn", variant="default")
+                            yield Input(
+                                id="oauth-code-input",
+                                placeholder="Paste verification code from Kaggle…",
+                                classes="hidden",
+                            )
+                            yield Button("Verify Code", id="oauth-verify-run-btn", variant="primary", classes="hidden")
+
+                    # Right: Schedule form with dropdowns
+                    with Vertical(id="schedule-panel"):
+                        yield Static("Schedule New Runs", classes="section-title")
+
+                        with Horizontal(classes="field-row"):
+                            yield Static("Task:", classes="field-label")
+                            yield Select(
+                                [("— list tasks first —", "__placeholder__")],
+                                id="task-select",
+                                classes="field-select",
+                                allow_blank=False,
+                            )
+
+                        yield Static("  Models  (check to include):", classes="field-label")
+                        yield SelectionList(
+                            ("— load models first —", "__placeholder__", False),
+                            id="models-list",
                         )
-                        yield Button("Add Task", id="add-task-btn", variant="default")
-                    with Horizontal(id="oauth-row"):
-                        yield Button("Kaggle Login", id="oauth-login-btn", variant="default")
-                        yield Input(
-                            id="oauth-code-input",
-                            placeholder="Paste verification code from Kaggle…",
-                            classes="hidden",
-                        )
-                        yield Button("Verify Code", id="oauth-verify-run-btn", variant="primary", classes="hidden")
 
-                # Right: Schedule form with dropdowns
-                with Vertical(id="schedule-panel"):
-                    yield Static("Schedule New Runs", classes="section-title")
+                        with Horizontal(id="schedule-btn-row"):
+                            yield Button("Load Models",   id="load-models-btn",  variant="default")
+                            yield Button("Schedule Runs", id="schedule-btn",     variant="primary")
 
-                    with Horizontal(classes="field-row"):
-                        yield Static("Task:", classes="field-label")
-                        yield Select(
-                            [("— list tasks first —", "__placeholder__")],
-                            id="task-select",
-                            classes="field-select",
-                            allow_blank=False,
-                        )
+            with Vertical(id="run-results"):
+                yield Static("Recent Runs", classes="section-title")
+                yield DataTable(id="runs-table", cursor_type="row", zebra_stripes=True)
 
-                    yield Static("  Models  (check to include):", classes="field-label")
-                    yield SelectionList(
-                        ("— load models first —", "__placeholder__", False),
-                        id="models-list",
-                    )
-
-                    with Horizontal(id="schedule-btn-row"):
-                        yield Button("Load Models",   id="load-models-btn",  variant="default")
-                        yield Button("Schedule Runs", id="schedule-btn",     variant="primary")
-
-            yield Static("Recent Runs", classes="section-title")
-            yield DataTable(id="runs-table", cursor_type="row", zebra_stripes=True)
-
-            yield Static("Log", classes="section-title")
-            yield Log(id="run-log", highlight=True)
-            yield Static("", id="status-bar")
+                yield Static("Log", classes="section-title")
+                yield Log(id="run-log", highlight=True)
+                yield Static("", id="status-bar")
 
     def on_mount(self) -> None:
         tt = self.query_one("#tasks-table", DataTable)

@@ -358,6 +358,15 @@ class EvalflowApp(App):
     App.tiny #sidebar { width: 14; }
     App.tiny .field-label { width: 10; padding-right: 1; }
     App.tiny #help-box { width: 95%; }
+
+    /* short: < 42 rows — shrink fixed-size form widgets         */
+    App.short #tasks-table   { height: 6; }
+    App.short #models-list   { height: 5; }
+    App.short #watcher-table { height: 4; }
+    App.short #run-top       { min-height: 12; }
+
+    /* tall: >= 55 rows — grow watcher table                     */
+    App.tall  #watcher-table { height: 10; }
     """
 
     BINDINGS = [
@@ -378,8 +387,11 @@ class EvalflowApp(App):
 
     def on_resize(self, event: Resize) -> None:
         w = event.size.width
+        h = event.size.height
         self.set_class(w < 110, "narrow")
         self.set_class(w < 85,  "tiny")
+        self.set_class(h < 42,  "short")
+        self.set_class(h >= 55, "tall")
 
     def on_mount(self) -> None:
         self.register_theme(EVALFLOW_THEME)
