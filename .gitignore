@@ -34,6 +34,7 @@ kaggle.json
 .evalflow_publish_state.json
 outputs/
 data/
+jsons_from_tasks/
 
 # ── Logs ──────────────────────────────────────────────────────────────────────
 *.log

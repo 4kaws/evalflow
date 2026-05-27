@@ -84,7 +84,7 @@ Kaggle (browser)                              Evalflow (terminal)
 ### Linux
 
 ```bash
-# Python 3.14+ is required
+# Python 3.12+ is required
 python3 --version
 
 git clone https://github.com/4kaws/evalflow.git
@@ -103,7 +103,7 @@ python evalflow.py
 ### macOS
 
 ```bash
-# Install Python 3.14+ via Homebrew if needed
+# Install Python 3.12+ via Homebrew if needed
 brew install python@3.14
 
 git clone https://github.com/4kaws/evalflow.git
@@ -139,9 +139,9 @@ Restart your machine when prompted. This installs Ubuntu by default.
 **2. Open Ubuntu from the Start menu**, then inside WSL:
 
 ```bash
-# Update packages and install Python 3.14+
+# Update packages and install Python 3.12+
 sudo apt update && sudo apt upgrade -y
-sudo apt install python3.14 python3.14-venv python3-pip git -y
+sudo apt install python3.12 python3.12-venv python3-pip git -y
 
 # Clone Evalflow
 git clone https://github.com/4kaws/evalflow.git
@@ -175,10 +175,12 @@ The setup wizard launches automatically on first run and collects:
 
 - **Kaggle credentials** — username and legacy API key
   Get yours at: **kaggle.com → Settings → Account → Legacy API Credentials → Create Legacy API Key**
-- **Kaggle OAuth login** *(optional)* — unlocks the Run tab for scheduling model runs directly from the terminal
+- **Kaggle OAuth login** *(recommended)* — required to pull all model runs from any public benchmark
+  Without it, Pull fetches only the latest run per task (Kernels API fallback).
+  Also needed for the Run tab (scheduling model runs from the terminal).
   Click **Generate Login URL**, visit the URL in a browser, then paste the verification code shown by Kaggle.
-  You can skip this step if you only need Pull / Merge / Publish.
   To authenticate later (or switch accounts), use the **Kaggle Login** button in the Run tab.
+  **Important:** the API key and OAuth login must be for the same Kaggle account.
 - **GitHub token and repo** — needed for the daily cloud schedule to sync your watcher config
   Create a fine-grained PAT at **github.com → Settings → Developer settings → Fine-grained tokens** with **Secrets: read & write** permission on your repo
 
@@ -360,6 +362,7 @@ Required GitHub Secrets:
 |--------|-------------|
 | `KAGGLE_USERNAME` | Your Kaggle username |
 | `KAGGLE_KEY` | Your Kaggle legacy API key |
+| `KAGGLE_REFRESH_TOKEN` | OAuth refresh token — enables pulling all model runs from any public benchmark. Get it from `~/.kaggle/credentials.json` after running the setup wizard or `kaggle auth login`. Without it, only the latest run per task is fetched. |
 | `EVALFLOW_MANIFEST` | Watcher config JSON — created automatically by the setup wizard; updated after every monitor run. If not using the wizard, create it manually with value `{}`. |
 | `GH_PAT` | Fine-grained GitHub PAT with Secrets read/write permission |
 
@@ -394,6 +397,7 @@ evalflow/
 │   └── workflows/
 │       └── evalflow_ci.yml  ← Daily schedule + manual dispatch CI
 ├── core/
+│   ├── auth.py              ← Bearer auth helper (OAuth + mismatch detection)
 │   ├── discovery.py         ← Shared benchmark task discovery via leaderboard API
 │   ├── github_secret.py     ← GitHub Actions secret encryption and upsert
 │   ├── merger.py            ← Builds evalflow_sft.csv + evalflow_preferences.csv
