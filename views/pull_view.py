@@ -39,6 +39,7 @@ class PullView(Vertical):
     _BTN_IDS = ["pull-btn", "list-btn", "browse-btn", "open-btn"]
 
     BINDINGS = [
+        Binding("ctrl+l", "toggle_log_focus", "Expand log", show=True, key_display="Ctrl+L"),
         Binding("down",   "nav_down",  show=False),
         Binding("up",     "nav_up",    show=False),
         Binding("left",   "nav_left",  show=False),
@@ -92,8 +93,14 @@ class PullView(Vertical):
         else:
             self.app.action_unfocus()
 
+    def action_toggle_log_focus(self) -> None:
+        self.toggle_class("log-focused")
+
     DEFAULT_CSS = """
     PullView { padding: 0; height: 1fr; }
+
+    PullView.log-focused #pull-controls  { display: none; }
+    PullView.log-focused #pull-downloads { display: none; }
 
     #pull-body { padding: 1 3; height: 1fr; }
 

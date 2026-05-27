@@ -155,6 +155,7 @@ class PublishView(Vertical):
     _BTN_IDS = ["publish-btn", "update-btn"]
 
     BINDINGS = [
+        Binding("ctrl+l", "toggle_log_focus", "Expand log", show=True, key_display="Ctrl+L"),
         Binding("ctrl+u", "publish_new",    "Publish new",    show=True, key_display="Ctrl+U"),
         Binding("ctrl+e", "publish_update", "Update existing", show=True, key_display="Ctrl+E"),
         Binding("down",   "nav_down",   show=False),
@@ -206,8 +207,13 @@ class PublishView(Vertical):
             self._reset_btns()
         self.app.action_unfocus()
 
+    def action_toggle_log_focus(self) -> None:
+        self.toggle_class("log-focused")
+
     DEFAULT_CSS = """
     PublishView { padding: 0; height: 1fr; }
+
+    PublishView.log-focused #publish-controls { display: none; }
 
     #publish-body { padding: 1 3; height: 1fr; }
 

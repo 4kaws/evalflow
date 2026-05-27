@@ -16,6 +16,7 @@ class MergeView(Vertical):
     _BTN_IDS = ["merge-btn", "refresh-btn", "selectall-btn"]
 
     BINDINGS = [
+        Binding("ctrl+l", "toggle_log_focus", "Expand log", show=True, key_display="Ctrl+L"),
         Binding("ctrl+a", "select_all", "Select all", show=True, key_display="Ctrl+A"),
         Binding("ctrl+m", "merge",      "Merge",      show=True, key_display="Ctrl+M"),
         Binding("ctrl+r", "refresh",    "Refresh",    show=True, key_display="Ctrl+R"),
@@ -68,8 +69,13 @@ class MergeView(Vertical):
             self._reset_btns()
         self.app.action_unfocus()
 
+    def action_toggle_log_focus(self) -> None:
+        self.toggle_class("log-focused")
+
     DEFAULT_CSS = """
     MergeView { padding: 0; height: 1fr; }
+
+    MergeView.log-focused #merge-controls { display: none; }
 
     #merge-body { padding: 1 3; height: 1fr; }
 

@@ -91,6 +91,7 @@ class MonitorView(Vertical):
     _BTN_IDS = ["check-btn", "add-btn", "remove-btn"]
 
     BINDINGS = [
+        Binding("ctrl+l", "toggle_log_focus", "Expand log", show=True, key_display="Ctrl+L"),
         Binding("ctrl+r", "check_all", "Check All", show=True, key_display="Ctrl+R"),
     ]
 
@@ -176,7 +177,14 @@ class MonitorView(Vertical):
     }
 
     #publish-check { margin-bottom: 0; }
+
+    MonitorView.log-focused #schedule-section { display: none; }
+    MonitorView.log-focused #monitor-left     { display: none; }
+    MonitorView.log-focused #monitor-right    { width: 1fr; }
     """
+
+    def action_toggle_log_focus(self) -> None:
+        self.toggle_class("log-focused")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

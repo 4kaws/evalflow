@@ -42,6 +42,7 @@ _STATE_ICONS = {
 
 class RunView(Vertical):
     BINDINGS = [
+        Binding("ctrl+l", "toggle_log_focus", "Expand log", show=True, key_display="Ctrl+L"),
         Binding("ctrl+r", "refresh", "Refresh", show=True, key_display="Ctrl+R"),
     ]
 
@@ -146,7 +147,12 @@ class RunView(Vertical):
         margin-bottom: 0;
         height: 2;
     }
+
+    RunView.log-focused #run-controls { display: none; }
     """
+
+    def action_toggle_log_focus(self) -> None:
+        self.toggle_class("log-focused")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
