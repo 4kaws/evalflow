@@ -457,7 +457,6 @@ class SetupWizard(App):
             req.code = code
             req.code_verifier = state["code_verifier"]
             req.grant_type = "authorization_code"
-            req.redirect_uri = _OAUTH_REDIRECT
 
             resp = base_client.security.oauth_client.exchange_oauth_token(req)
             creds = KaggleCredentials(
