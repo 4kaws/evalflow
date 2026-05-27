@@ -334,10 +334,8 @@ class RunView(Vertical):
             return
 
         try:
-            from kagglesdk.benchmarks.types.benchmark_tasks_api_service import (
-                ApiListBenchmarkTasksRequest,
-                ApiListBenchmarkTasksResponse,
-            )
+            from kagglesdk.benchmarks.types.benchmark_tasks_api_service import ApiListBenchmarkTasksRequest
+            client = kag_client.benchmarks.benchmark_tasks_api_client
 
             tasks: list[dict] = []
             page_token = ""
@@ -346,7 +344,7 @@ class RunView(Vertical):
                 req.page_size = 100
                 if page_token:
                     req.page_token = page_token
-                resp = self._rest_call(kag_client, req, ApiListBenchmarkTasksResponse)
+                resp = client.list_benchmark_tasks(req)
                 for t in resp.tasks or []:
                     slug_obj = t.slug
                     if slug_obj and hasattr(slug_obj, "owner_slug"):
@@ -461,8 +459,8 @@ class RunView(Vertical):
             from kagglesdk.benchmarks.types.benchmark_tasks_api_service import (
                 ApiBenchmarkTaskSlug,
                 ApiListBenchmarkTaskRunsRequest,
-                ApiListBenchmarkTaskRunsResponse,
             )
+            client = kag_client.benchmarks.benchmark_tasks_api_client
             parts = task_slug.split("/", 1)
             owner, slug_name = parts[0], parts[1] if len(parts) > 1 else ""
 
@@ -477,7 +475,7 @@ class RunView(Vertical):
                 req.page_size  = 50
                 if page_token:
                     req.page_token = page_token
-                resp = self._rest_call(kag_client, req, ApiListBenchmarkTaskRunsResponse)
+                resp = client.list_benchmark_task_runs(req)
                 for r in resp.runs or []:
                     state_str = str(r.state or "")
                     state_key = state_str.split(".")[-1] if "." in state_str else state_str
@@ -530,9 +528,9 @@ class RunView(Vertical):
         try:
             from kagglesdk.benchmarks.types.benchmark_tasks_api_service import (
                 ApiBatchScheduleBenchmarkTaskRunsRequest,
-                ApiBatchScheduleBenchmarkTaskRunsResponse,
                 ApiBenchmarkTaskSlug,
             )
+            client = kag_client.benchmarks.benchmark_tasks_api_client
             parts = task_slug.split("/", 1)
             owner, slug_name = parts[0], parts[1] if len(parts) > 1 else ""
 
@@ -544,7 +542,7 @@ class RunView(Vertical):
             req.task_slugs          = [task_slug_obj]
             req.model_version_slugs = list(selected_models)
 
-            resp = self._rest_call(kag_client, req, ApiBatchScheduleBenchmarkTaskRunsResponse)
+            resp = client.batch_schedule_benchmark_task_runs(req)
             results = resp.results or []
 
             def _finish(results=results):
@@ -561,51 +559,42 @@ class RunView(Vertical):
             )
 
     # ------------------------------------------------------------------ #
-    #  HTTP helpers                                                        #
+    #  Auth helper                                                         #
     # ------------------------------------------------------------------ #
-
-    def _rest_call(self, kag_client, req, response_type):
-        """
-        Direct REST call to the Benchmark Tasks API.
-        The SDK's call() generates gRPC-style URLs missing the /api prefix for PROD.
-        Each request class defines the correct path via endpoint() — use that instead.
-        """
-        import requests as _requests
-        _http = kag_client._http_client
-        url = "https://api.kaggle.com" + req.endpoint()
-        body = type(req).to_dict(req)
-        http_resp = _http._session.post(url, json=body)
-        try:
-            ct = http_resp.headers.get("Content-Type", "")
-            if "application/json" in ct:
-                resp_json = http_resp.json()
-                if isinstance(resp_json, dict) and resp_json.get("code", 0) >= 400:
-                    raise _requests.exceptions.HTTPError(
-                        resp_json.get("message", "HTTP error"), response=http_resp
-                    )
-        except (ValueError, KeyError):
-            pass
-        http_resp.raise_for_status()
-        return response_type.prepare_from(http_resp)
 
     def _make_client(self, log: Log):
         try:
             from kagglesdk import KaggleClient
+            from kagglesdk.kaggle_creds import KaggleCredentials
             if not config.kaggle_username or not config.kaggle_key:
                 self.app.call_from_thread(
                     lambda: log.write_line("[x] Credentials not configured. Run setup wizard (w).")
                 )
                 return None
-            # The Benchmark Tasks API (list/schedule/runs) requires Bearer (OAuth) auth.
-            # Let the SDK pick up ~/.kaggle/access_token if present (Bearer), else fall
-            # back to ~/.kaggle/kaggle.json (Basic). Do NOT force Basic auth here — that
-            # is the pull_view approach for download operations which behave differently.
-            # To set up OAuth: run  ! kaggle auth login  in the chat prompt.
+            # The Benchmark Tasks API requires OAuth Bearer auth, not Basic auth.
+            # kagglesdk 0.1.24+ saves OAuth creds to ~/.kaggle/credentials.json.
+            # Load that file, refresh the access token if expired, then pass it
+            # as api_token so the SDK uses Bearer auth for all calls.
             config.ensure_kaggle_json()
-            kag_client = KaggleClient(
+            base_client = KaggleClient(
                 username=config.kaggle_username,
                 password=config.kaggle_key,
             )
+            creds = KaggleCredentials.load(base_client)
+            if creds:
+                token = creds.get_access_token()
+                kag_client = KaggleClient(api_token=token)
+                self.app.call_from_thread(
+                    lambda: log.write_line("   (using OAuth Bearer token)")
+                )
+            else:
+                kag_client = base_client
+                self.app.call_from_thread(
+                    lambda: log.write_line(
+                        "   [!] No OAuth token — run  ! kaggle auth login  to enable Run view.\n"
+                        "       Falling back to Basic auth (List My Tasks may return 404)."
+                    )
+                )
             return kag_client
         except ImportError:
             self.app.call_from_thread(lambda: log.write_line("[x] kagglesdk not installed."))
