@@ -29,10 +29,6 @@ on:
         type: choice
         options: ["true", "false"]
 
-  schedule:
-    - cron: "30 8 * * *"
-      timezone: "Europe/Bucharest"
-
 env:
   PYTHON_VERSION: "3.11"
 

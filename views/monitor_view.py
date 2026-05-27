@@ -56,20 +56,29 @@ def _get_schedule() -> tuple[bool, int, int, str]:
             return True, hh, mm, tz
     except Exception:
         pass
-    return False, 9, 22, _WORKFLOW_TZ
+    return False, 0, 0, "UTC"
 
 
 def _set_schedule_in_workflow(hh: int, mm: int, tz: str = _WORKFLOW_TZ) -> None:
-    """Update the cron expression in the GitHub Actions workflow file."""
+    """Update (or add) the cron expression in the GitHub Actions workflow file."""
     _valid_tzs = {v for _, v in TIMEZONES}
     if tz not in _valid_tzs:
         raise ValueError(f"Unknown timezone: {tz!r}")
     content = _WORKFLOW_FILE.read_text()
-    content = _re.sub(
-        r'[ \t]*- cron: "[^"]*"[^\n]*\n([ \t]*timezone:[^\n]*)?\n?',
-        f'    - cron: "{mm} {hh} * * *"\n      timezone: "{tz}"\n',
-        content,
-    )
+    new_cron = f'    - cron: "{mm} {hh} * * *"\n      timezone: "{tz}"\n'
+    if _re.search(r'[ \t]*- cron:\s*"', content):
+        content = _re.sub(
+            r'[ \t]*- cron: "[^"]*"[^\n]*\n([ \t]*timezone:[^\n]*)?\n?',
+            new_cron,
+            content,
+        )
+    else:
+        # No schedule block yet — insert one before env: or jobs:
+        schedule_block = f'\n  schedule:\n{new_cron}\n'
+        for marker in ('\nenv:', '\njobs:'):
+            if marker in content:
+                content = content.replace(marker, schedule_block + marker, 1)
+                break
     _WORKFLOW_FILE.write_text(content)
 
 
@@ -202,7 +211,7 @@ class MonitorView(Vertical):
             with Horizontal(id="schedule-row"):
                 yield Static("Daily at:", id="sched-label")
                 yield Input(placeholder="HH:MM", id="time-input")
-                yield Select(TIMEZONES, value=_WORKFLOW_TZ, id="tz-select")
+                yield Select(TIMEZONES, id="tz-select")
                 yield Button("Save", id="save-schedule-btn", variant="primary")
             yield Static("", id="schedule-panel")
 
@@ -276,7 +285,7 @@ class MonitorView(Vertical):
     def _load_schedule_ui(self) -> None:
         found, hh, mm, tz = _get_schedule()
         self.query_one("#time-input", Input).value = f"{hh:02d}:{mm:02d}" if found else ""
-        self.query_one("#tz-select", Select).value = tz  # type: ignore[assignment]
+        self.query_one("#tz-select", Select).value = tz if found else Select.BLANK  # type: ignore[assignment]
         self.query_one("#schedule-panel").update(_next_run_text(found, hh, mm))
 
     def _save_schedule(self) -> None:
