@@ -378,6 +378,16 @@ class EvalflowApp(App):
     App.short #watcher-table { height: 4; }
     App.short #run-top       { height: 10; }
     App.short #runs-table    { height: 3; }
+    App.short BrandHeader              { height: 5; }
+    App.short BrandHeader #brand-goose { height: 3; }
+    App.short BrandHeader #brand-name  { height: 3; }
+    App.short NavItem                  { height: 2; }
+    App.short NavItem.small            { height: 1; }
+    App.short #sidebar-nav             { padding: 0; }
+    App.short #sidebar-foot            { padding: 0; }
+
+    /* tiny-h: < 30 rows — hide sidebar entirely                 */
+    App.tiny-h #sidebar { display: none; }
 
     /* tall: >= 55 rows — grow watcher table and run controls    */
     App.tall  #watcher-table { height: 10; }
@@ -408,6 +418,7 @@ class EvalflowApp(App):
         self.set_class(w < 85,  "tiny")
         self.set_class(h < 42,  "short")
         self.set_class(h >= 55, "tall")
+        self.set_class(h < 30,  "tiny-h")
 
     def on_mount(self) -> None:
         self.register_theme(EVALFLOW_THEME)
