@@ -335,11 +335,6 @@ class PullView(Vertical):
                 config.kaggle_key,
                 log=log.write_line,
             )
-            if not bearer_ok:
-                log.write_line(
-                    "[!] OAuth not configured — only the latest run per task will be fetched.\n"
-                    "   Run the wizard (w) and complete the OAuth step to get all runs."
-                )
         except ImportError:
             log.write_line("[x] kaggle / kagglesdk package not installed.")
             return

@@ -184,10 +184,6 @@ def main() -> None:
         log=print,
     )
 
-    if not bearer_ok:
-        print("⚠  OAuth not configured — only the latest run per task will be fetched.")
-        print("   Run `kaggle auth login` or set KAGGLE_REFRESH_TOKEN to get all runs.\n")
-
     # ── Discover tasks ────────────────────────────────────────────────
     print(f"\n🔍 Discovering tasks under: {args.slug}")
     from core.discovery import discover_tasks

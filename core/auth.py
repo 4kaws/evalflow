@@ -42,10 +42,22 @@ def make_bearer_client(
         if creds:
             token = creds.get_access_token()
             if token:
-                _log(f"Authenticated as {username}")
-                return KaggleClient(api_token=token), True
+                oauth_user = creds.get_username() or ""
+                if oauth_user and oauth_user.lower() != username.lower():
+                    _log(
+                        f"[!] OAuth account mismatch: credentials.json is for '{oauth_user}' "
+                        f"but KAGGLE_USERNAME is '{username}'.\n"
+                        "    Re-run the wizard to fix — OAuth will not be used."
+                    )
+                    # fall through to basic auth
+                else:
+                    _log(f"Authenticated as {username} (Bearer)")
+                    return KaggleClient(api_token=token), True
     except Exception:
         pass
 
-    _log(f"Authenticated as {username}")
+    _log(
+        "[!] OAuth not configured — only the latest run per task will be fetched.\n"
+        "    Run the wizard or set KAGGLE_REFRESH_TOKEN to get all runs."
+    )
     return base_client, False

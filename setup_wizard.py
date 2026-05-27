@@ -188,8 +188,12 @@ class SetupWizard(App):
             yield WizardStep(
                 Static("Kaggle API Credentials", classes="step-title"),
                 Static(
-                    "Your Kaggle username and Legacy API key.\n"
-                    "Used to pull benchmark output CSVs and publish datasets to Kaggle.",
+                    "Your Kaggle username and Legacy API key.\n\n"
+                    "  The API key is used for:\n"
+                    "    • Publishing datasets to Kaggle\n"
+                    "    • Kernels API fallback (latest run only, no OAuth needed)\n\n"
+                    "  OAuth (next step) is needed to pull all model runs from any\n"
+                    "  public benchmark. Both credentials must be the same Kaggle account.",
                     classes="step-body",
                 ),
                 Static(
@@ -304,14 +308,22 @@ class SetupWizard(App):
 
     def _prefill_oauth_status(self) -> None:
         creds_path = Path.home() / ".kaggle" / "credentials.json"
+        kaggle_username, _ = self._get_kaggle_creds()
         try:
             if creds_path.exists():
                 data = json.loads(creds_path.read_text())
-                username = data.get("username", "unknown")
-                self.query_one("#oauth-status").update(
-                    f"Already authenticated as {username} — click Next to keep, "
-                    "or Generate Login URL to switch accounts."
-                )
+                oauth_user = data.get("username", "unknown")
+                if kaggle_username and oauth_user.lower() != kaggle_username.lower():
+                    self.query_one("#oauth-status").update(
+                        f"[!] Account mismatch: OAuth is for '{oauth_user}' "
+                        f"but KAGGLE_USERNAME is '{kaggle_username}'.\n"
+                        "    Re-authenticate or update step 1 so both use the same account."
+                    )
+                else:
+                    self.query_one("#oauth-status").update(
+                        f"Already authenticated as {oauth_user} — click Next to keep, "
+                        "or Generate Login URL to switch accounts."
+                    )
             else:
                 self.query_one("#oauth-status").update(
                     "Not yet authenticated — generate a login URL to enable the Run tab."
@@ -471,9 +483,18 @@ class SetupWizard(App):
             creds.save()
 
             def _on_success(u=resp.username):
-                self.query_one("#oauth-status").update(
-                    f"Authenticated as {u} — success! Click Next to continue."
-                )
+                wizard_username, _ = self._get_kaggle_creds()
+                if wizard_username and u.lower() != wizard_username.lower():
+                    self.query_one("#oauth-status").update(
+                        f"[!] Account mismatch: you authenticated as '{u}' "
+                        f"but KAGGLE_USERNAME is '{wizard_username}'.\n"
+                        f"    Go back to step 1 and correct the username, "
+                        f"or re-authenticate as '{wizard_username}'."
+                    )
+                else:
+                    self.query_one("#oauth-status").update(
+                        f"Authenticated as {u} — success! Click Next to continue."
+                    )
                 self.query_one("#oauth-code", Input).add_class("hidden")
                 self.query_one("#oauth-verify-btn", Button).add_class("hidden")
 
@@ -529,6 +550,9 @@ class SetupWizard(App):
             return
         self._collect_step()
         self._step_index += 1
+        if self._step_index == 2:
+            # Re-check OAuth status now that step 1 credentials are collected
+            self._prefill_oauth_status()
         if self._step_index == len(STEPS) - 1:
             self._write_env()
             self._bootstrap_manifest_secret()
@@ -616,7 +640,14 @@ class SetupWizard(App):
         if creds_path.exists():
             try:
                 oauth_user = json.loads(creds_path.read_text()).get("username", "?")
-                oauth_line = f"  [+]   OAuth Bearer token for [{oauth_user}]"
+                if username and oauth_user.lower() != username.lower():
+                    oauth_line = (
+                        f"  [!]   OAuth mismatch: credentials.json is for '{oauth_user}' "
+                        f"but KAGGLE_USERNAME is '{username}'.\n"
+                        "         Re-run the wizard to fix — OAuth will not be used."
+                    )
+                else:
+                    oauth_line = f"  [+]   OAuth Bearer token for [{oauth_user}]"
             except Exception:
                 oauth_line = "  [+]   OAuth Bearer token present"
         else:
