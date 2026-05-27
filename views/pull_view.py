@@ -97,6 +97,11 @@ class PullView(Vertical):
 
     #pull-body { padding: 1 3; height: 1fr; }
 
+    /* Controls section shrinks to fit form; results section expands to fill */
+    #pull-controls  { height: auto; }
+    #pull-results   { height: 1fr; }
+    #pull-downloads { height: auto; }
+
     .section-title {
         color: #636E7B;
         text-style: bold;
@@ -133,12 +138,12 @@ class PullView(Vertical):
         min-height: 4;
         background: $surface;
         border: round #D0D7DE;
-        margin-top: 1;
+        margin-top: 0;
         padding: 0 1;
     }
 
     #pulled-table {
-        height: 1fr;
+        height: 6;
         min-height: 4;
         background: $surface;
         border: round #D0D7DE;
@@ -166,55 +171,54 @@ class PullView(Vertical):
             "Auto-discover and download all task runs from a Kaggle benchmark.",
         )
         with Vertical(id="pull-body"):
-            yield Static(
-                "Requires KAGGLE_USERNAME + KAGGLE_KEY  (set via wizard [dim]w[/dim] or .env).",
-                id="creds-note",
-                markup=True,
-            )
-
-            # Main input: benchmark slug
-            with Horizontal(classes="field-row"):
-                yield Label("Task prefix slug:", classes="field-label")
-                yield Input(
-                    placeholder="username/notebook-name  (from Kaggle benchmark URL)",
-                    id="slug-input",
-                    classes="field-input",
+            with Vertical(id="pull-controls"):
+                yield Static(
+                    "Requires KAGGLE_USERNAME + KAGGLE_KEY  (set via wizard [dim]w[/dim] or .env).",
+                    id="creds-note",
+                    markup=True,
                 )
 
-            # Recent slugs (read-only display)
-            with Horizontal(classes="field-row"):
-                yield Label("Recent:", classes="field-label")
-                yield Static("", id="history-display")
+                with Horizontal(classes="field-row"):
+                    yield Label("Task prefix slug:", classes="field-label")
+                    yield Input(
+                        placeholder="username/notebook-name  (from Kaggle benchmark URL)",
+                        id="slug-input",
+                        classes="field-input",
+                    )
 
-            # Output dir
-            with Horizontal(classes="field-row"):
-                yield Label("Save to:", classes="field-label")
-                yield Input(
-                    value=str(config.output_dir),
-                    id="outdir-input",
-                    classes="field-input",
+                with Horizontal(classes="field-row"):
+                    yield Label("Recent:", classes="field-label")
+                    yield Static("", id="history-display")
+
+                with Horizontal(classes="field-row"):
+                    yield Label("Save to:", classes="field-label")
+                    yield Input(
+                        value=str(config.output_dir),
+                        id="outdir-input",
+                        classes="field-input",
+                    )
+
+                yield Checkbox(
+                    "Single task  (skip benchmark discovery — slug is a direct task, not a benchmark)",
+                    value=False,
+                    id="single-task-mode",
                 )
+                yield Checkbox("Go to Merge after pull", value=True, id="auto-merge-switch")
 
-            # Mode and auto-navigate
-            yield Checkbox(
-                "Single task  (skip benchmark discovery — slug is a direct task, not a benchmark)",
-                value=False,
-                id="single-task-mode",
-            )
-            yield Checkbox("Go to Merge after pull", value=True, id="auto-merge-switch")
+                with Horizontal(id="btn-row"):
+                    yield Button("Pull All Tasks",  id="pull-btn",   variant="primary")
+                    yield Button("List tasks only", id="list-btn",   variant="default")
+                    yield Button("Browse My Tasks", id="browse-btn", variant="default")
+                    yield Button("Open on Kaggle",  id="open-btn",   variant="default")
 
-            with Horizontal(id="btn-row"):
-                yield Button("Pull All Tasks",  id="pull-btn",   variant="primary")
-                yield Button("List tasks only", id="list-btn",   variant="default")
-                yield Button("Browse My Tasks", id="browse-btn", variant="default")
-                yield Button("Open on Kaggle",  id="open-btn",   variant="default")
+            with Vertical(id="pull-results"):
+                yield Static("Pull Log", classes="section-title")
+                yield Log(id="pull-log", highlight=True)
 
-            yield Static("Pull Log", classes="section-title")
-            yield Log(id="pull-log", highlight=True)
-
-            yield Static("Downloaded Files", classes="section-title")
-            yield DataTable(id="pulled-table", cursor_type="row", zebra_stripes=True)
-            yield Static("", id="status-bar")
+            with Vertical(id="pull-downloads"):
+                yield Static("Downloaded Files", classes="section-title")
+                yield DataTable(id="pulled-table", cursor_type="row", zebra_stripes=True)
+                yield Static("", id="status-bar")
 
     def on_mount(self) -> None:
         table = self.query_one("#pulled-table", DataTable)

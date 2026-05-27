@@ -73,11 +73,15 @@ class MergeView(Vertical):
 
     #merge-body { padding: 1 3; height: 1fr; }
 
+    /* Controls section shrinks to fit form; results section expands to fill */
+    #merge-controls { height: auto; }
+    #merge-results  { height: 1fr; }
+
     .section-title { color: #636E7B; text-style: bold; margin-bottom: 0; margin-top: 1; }
 
     #file-list {
-        height: 1fr;
-        min-height: 4;
+        height: 6;
+        min-height: 3;
         background: $surface;
         border: round #D0D7DE;
         padding: 0 1;
@@ -93,7 +97,7 @@ class MergeView(Vertical):
         min-height: 4;
         background: $surface;
         border: round #D0D7DE;
-        margin-top: 1;
+        margin-top: 0;
         padding: 0 1;
     }
 
@@ -118,31 +122,33 @@ class MergeView(Vertical):
             "Combine every pulled run into two research-ready datasets.",
         )
         with Vertical(id="merge-body"):
-            yield Static(
-                "Select pulled .run.json files to merge. Two files will be produced:\n"
-                "  + evalflow_sft.csv / .parquet           — SFT / fine-tuning format (passing responses)\n"
-                "  + evalflow_preferences.csv / .parquet   — DPO preference pairs (prompt/chosen/rejected)",
-                id="format-note",
-            )
+            with Vertical(id="merge-controls"):
+                yield Static(
+                    "Select pulled .run.json files to merge. Two files will be produced:\n"
+                    "  + evalflow_sft.csv / .parquet           — SFT / fine-tuning format (passing responses)\n"
+                    "  + evalflow_preferences.csv / .parquet   — DPO preference pairs (prompt/chosen/rejected)",
+                    id="format-note",
+                )
 
-            yield Static("Select files to merge:", classes="section-title")
-            yield ScrollableContainer(id="file-list")
+                yield Static("Select files to merge:", classes="section-title")
+                yield ScrollableContainer(id="file-list")
 
-            yield Checkbox("Remove duplicate rows", value=True, id="dedup-switch")
-            yield Checkbox(
-                "SFT: include passing responses only  (recommended for fine-tuning)",
-                value=True,
-                id="passing-only-switch",
-            )
+                yield Checkbox("Remove duplicate rows", value=True, id="dedup-switch")
+                yield Checkbox(
+                    "SFT: include passing responses only  (recommended for fine-tuning)",
+                    value=True,
+                    id="passing-only-switch",
+                )
 
-            with Horizontal(id="btn-row"):
-                yield Button("Merge Selected", id="merge-btn", variant="primary")
-                yield Button("Refresh",        id="refresh-btn")
-                yield Button("Select All",     id="selectall-btn")
+                with Horizontal(id="btn-row"):
+                    yield Button("Merge Selected", id="merge-btn", variant="primary")
+                    yield Button("Refresh",        id="refresh-btn")
+                    yield Button("Select All",     id="selectall-btn")
 
-            yield Static("Merge Log", classes="section-title")
-            yield Log(id="merge-log", highlight=True)
-            yield Static("", id="stats-panel")
+            with Vertical(id="merge-results"):
+                yield Static("Merge Log", classes="section-title")
+                yield Log(id="merge-log", highlight=True)
+                yield Static("", id="stats-panel")
 
     def on_mount(self) -> None:
         pass  # start empty — user clicks Refresh after pulling
