@@ -49,10 +49,15 @@ def make_bearer_client(
 
         refresh_token = os.environ.get("KAGGLE_REFRESH_TOKEN")
         if refresh_token:
-            token = _oauth_refresh(base_client, refresh_token)
-            if token:
-                _log(f"Authenticated as {username} (Bearer)")
-                return KaggleClient(api_token=token), True
+            try:
+                token = _oauth_refresh(base_client, refresh_token)
+                if token:
+                    _log(f"Authenticated as {username} (Bearer)")
+                    return KaggleClient(api_token=token), True
+                else:
+                    _log("[!] OAuth refresh returned empty token — re-run the wizard OAuth step.")
+            except Exception as e:
+                _log(f"[!] OAuth refresh failed: {e} — falling back to credentials.json")
 
         creds = KaggleCredentials.load(base_client)
         if creds and creds._refresh_token:
@@ -66,7 +71,11 @@ def make_bearer_client(
                 or creds._access_token_expiration < datetime.now(timezone.utc)
             )
             if expired:
-                access_token = _oauth_refresh(base_client, creds._refresh_token)
+                try:
+                    access_token = _oauth_refresh(base_client, creds._refresh_token)
+                except Exception as e:
+                    _log(f"[!] OAuth refresh from credentials.json failed: {e}")
+                    access_token = None
             if access_token:
                 oauth_user = creds.get_username() or ""
                 if oauth_user and oauth_user.lower() != username.lower():
@@ -79,8 +88,8 @@ def make_bearer_client(
                 else:
                     _log(f"Authenticated as {username} (Bearer)")
                     return KaggleClient(api_token=access_token), True
-    except Exception:
-        pass
+    except Exception as e:
+        _log(f"[!] OAuth setup error: {e}")
 
     _log(
         "[!] OAuth not configured — only the latest run per task will be fetched.\n"
