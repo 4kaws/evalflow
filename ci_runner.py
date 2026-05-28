@@ -94,17 +94,19 @@ def pull_task(kag_client, task_slug: str, out_dir: Path, bearer_ok: bool = True)
             is_404 = "404" in exc_str
             if is_404 and bearer_ok:
                 print(
-                    "   [!] Tasks API returned 404 — the Tasks API only allows the benchmark\n"
-                    "   owner to list all runs. Falling back to Kernels API (latest run only)."
+                    "   [!] Tasks API returned 404 — OAuth token is not being accepted\n"
+                    "   (the API returns 404 when Bearer auth fails, same as Basic auth).\n"
+                    "   Refresh KAGGLE_REFRESH_TOKEN and retry.\n"
+                    "   Falling back to Kernels API (latest run only)."
                 )
             elif bearer_ok:
                 print(
-                    "   [!] Tasks API returned 403 despite valid Bearer auth —\n"
-                    "   OAuth token may have expired. Refresh KAGGLE_REFRESH_TOKEN and retry.\n"
+                    "   [!] Tasks API returned 403 — benchmark is private or restricted,\n"
+                    "   or OAuth token has expired. Refresh KAGGLE_REFRESH_TOKEN and retry.\n"
                     "   Falling back to Kernels API (latest run only)."
                 )
             else:
-                print("   [!] Tasks API requires OAuth — falling back to Kernels API (latest run only).")
+                print("   [!] Tasks API requires OAuth — Basic auth is always rejected. Falling back to Kernels API.")
             return _pull_task_kernels(kag_client, task_slug, out_dir)
         print(f"   [x] Failed to list runs: {exc_str}", file=sys.stderr)
         return []

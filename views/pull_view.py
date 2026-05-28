@@ -515,19 +515,21 @@ class PullView(Vertical):
                 is_404 = "404" in exc_str
                 if is_404 and bearer_ok:
                     log.write_line(
-                        "   [!] Tasks API returned 404 — the Tasks API only allows the benchmark\n"
-                        "   owner to list all runs. Falling back to Kernels API (latest run per task)."
+                        "   [!] Tasks API returned 404 — OAuth token is not being accepted\n"
+                        "   (the API returns 404 when Bearer auth fails, same as Basic auth).\n"
+                        "   Re-run the wizard (w) and redo the OAuth step to get a fresh token.\n"
+                        "   Falling back to Kernels API (latest run per task)."
                     )
                 elif bearer_ok:
                     log.write_line(
-                        "   [!] Tasks API returned 403 despite valid Bearer auth —\n"
-                        "   your OAuth token may have expired.\n"
+                        "   [!] Tasks API returned 403 — this benchmark or task is private\n"
+                        "   or your OAuth token has expired.\n"
                         "   Re-run the wizard (w) and redo the OAuth step to refresh it.\n"
                         "   Falling back to Kernels API (latest run only per task)."
                     )
                 else:
                     log.write_line(
-                        "   [!] Tasks API requires OAuth — Bearer auth not available.\n"
+                        "   [!] Tasks API requires OAuth — Basic auth is always rejected.\n"
                         "   Fetching latest run only via Kernels API (1 model per task).\n"
                         "   To get all runs: run the wizard (w) and complete the OAuth step."
                     )
