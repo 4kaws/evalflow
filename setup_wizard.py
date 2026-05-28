@@ -263,17 +263,20 @@ class SetupWizard(App):
                 yield WizardStep(
                     Static("GitHub Integration (optional)", classes="step-title"),
                     Static(
-                        "Used to sync your watcher list to GitHub Actions as a secret,\n"
-                        "so the daily monitor can run in CI without exposing your config.",
+                        "Used to sync your Kaggle credentials and watcher list to GitHub Actions,\n"
+                        "so the daily monitor can pull benchmarks automatically in CI.",
                         classes="step-body",
                     ),
                     Static(
-                        "How to create a token:\n"
-                        "  1. Go to github.com → Settings → Developer settings\n"
-                        "  2. Personal access tokens → Fine-grained tokens → Generate new token\n"
-                        "  3. Under 'Repository permissions' → Secrets → Read and write\n"
-                        "  4. Copy the token below\n\n"
-                        "  GITHUB_REPO format: owner/repo  (e.g. 4kaws/evalflow)",
+                        "Step 1 — Fork the repo (one time):\n"
+                        "  Go to github.com/4kaws/evalflow and click Fork.\n"
+                        "  Your fork will be: github.com/YOUR_USERNAME/evalflow\n\n"
+                        "Step 2 — Create a PAT:\n"
+                        "  github.com → Settings → Developer settings\n"
+                        "  → Personal access tokens → Fine-grained tokens → Generate new token\n"
+                        "  → Repository access: your evalflow fork\n"
+                        "  → Repository permissions: Actions = Read and write, Secrets = Read and write\n\n"
+                        "  GITHUB_REPO format: YOUR_USERNAME/evalflow",
                         classes="note-info",
                     ),
                     Label("GITHUB_TOKEN:", classes="field-label"),
