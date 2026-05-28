@@ -877,6 +877,7 @@ class MonitorView(Vertical):
         def write(msg: str) -> None:
             self.app.call_from_thread(log.write_line, msg)
 
+        import os
         import requests as _req
         from base64 import b64encode, b64decode
 
@@ -885,10 +886,10 @@ class MonitorView(Vertical):
         if not token or not repo:
             write("[x] GITHUB_TOKEN and GITHUB_REPO must be set in .env")
             write("    GITHUB_TOKEN : a PAT with 'secrets' scope")
-            write("    GITHUB_REPO  : e.g. 4kaws/evalflow")
+            write("    GITHUB_REPO  : e.g. yourusername/evalflow")
             return
 
-        write("\n>> Syncing watcher manifest to GitHub secret …")
+        write("\n>> Syncing secrets to GitHub Actions …")
         headers = {
             "Authorization": f"token {token}",
             "Accept": "application/vnd.github+json",
@@ -904,21 +905,47 @@ class MonitorView(Vertical):
             from nacl import encoding, public as nacl_public
             pk  = nacl_public.PublicKey(b64decode(pk_data["key"]), encoding.RawEncoder)
             box = nacl_public.SealedBox(pk)
-            encrypted = b64encode(box.encrypt(json.dumps(self._manifest, indent=2).encode())).decode()
         except Exception as exc:
-            write(f"[x] Encryption failed: {exc}")
+            write(f"[x] Encryption setup failed: {exc}")
             write("    Run: pip install PyNaCl")
             return
 
+        def _push_secret(name: str, value: str) -> bool:
+            if not value:
+                write(f"   (skipping {name} — not set)")
+                return True
+            enc = b64encode(box.encrypt(value.encode())).decode()
+            resp = _req.put(
+                f"https://api.github.com/repos/{repo}/actions/secrets/{name}",
+                headers=headers,
+                json={"encrypted_value": enc, "key_id": pk_data["key_id"]},
+            )
+            if resp.status_code in (201, 204):
+                write(f"   [ok] {name}")
+                return True
+            write(f"   [x] {name} failed: {resp.status_code} {resp.text}")
+            return False
+
+        # Kaggle credentials
+        refresh_token = os.environ.get("KAGGLE_REFRESH_TOKEN", "")
+        _push_secret("KAGGLE_USERNAME",      config.kaggle_username)
+        _push_secret("KAGGLE_KEY",           config.kaggle_key)
+        _push_secret("KAGGLE_REFRESH_TOKEN", refresh_token)
+
+        # Watcher manifest
+        manifest_json = json.dumps(self._manifest, indent=2)
+        enc = b64encode(box.encrypt(manifest_json.encode())).decode()
         r = _req.put(
             f"https://api.github.com/repos/{repo}/actions/secrets/EVALFLOW_MANIFEST",
             headers=headers,
-            json={"encrypted_value": encrypted, "key_id": pk_data["key_id"]},
+            json={"encrypted_value": enc, "key_id": pk_data["key_id"]},
         )
         if r.status_code in (201, 204):
-            write(f"[ok] EVALFLOW_MANIFEST secret updated ({len(self._manifest)} watcher(s))")
+            write(f"   [ok] EVALFLOW_MANIFEST ({len(self._manifest)} watcher(s))")
         else:
-            write(f"[x] Failed to update secret: {r.status_code} {r.text}")
+            write(f"   [x] EVALFLOW_MANIFEST failed: {r.status_code} {r.text}")
+
+        write("[ok] GitHub secrets synced — CI is ready to run.")
 
     # ------------------------------------------------------------------ #
     #  Log file                                                            #
