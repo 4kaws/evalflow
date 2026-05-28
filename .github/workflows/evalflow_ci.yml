@@ -29,6 +29,11 @@ on:
         type: choice
         options: ["true", "false"]
 
+  schedule:
+    - cron: "15 7 * * *"
+      timezone: "Europe/Bucharest"
+
+
 env:
   PYTHON_VERSION: "3.12"
 
