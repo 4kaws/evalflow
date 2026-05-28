@@ -50,12 +50,11 @@ def _api_call_with_retry(call, label: str):
             time.sleep(delay)
 
 
-def pull_task(kag_client, task_slug: str, out_dir: Path) -> list[Path]:
+def pull_task(kag_client, task_slug: str, out_dir: Path, bearer_ok: bool = True) -> list[Path]:
     """Download all .run.json outputs for a benchmark task via the Tasks API.
 
     Returns a list of saved paths (empty if no completed runs exist).
-    Falls back to the Kernels API (latest session only) when the Tasks API
-    returns 403/404 — this happens when Bearer auth is unavailable.
+    Falls back to the Kernels API (latest session only) on 403/404.
     """
     from kagglesdk.benchmarks.types.benchmark_tasks_api_service import (
         ApiBenchmarkTaskSlug,
@@ -92,7 +91,15 @@ def pull_task(kag_client, task_slug: str, out_dir: Path) -> list[Path]:
     except Exception as exc:
         exc_str = str(exc)
         if "403" in exc_str or "404" in exc_str:
-            print("   [!] Tasks API requires OAuth — falling back to Kernels API (latest run only).")
+            if bearer_ok:
+                print(
+                    f"   [!] Tasks API returned {('403' if '403' in exc_str else '404')} "
+                    "despite valid Bearer auth — OAuth token may have expired.\n"
+                    "   Re-run the wizard and redo the OAuth step, or refresh KAGGLE_REFRESH_TOKEN.\n"
+                    "   Falling back to Kernels API (latest run only per task)."
+                )
+            else:
+                print("   [!] Tasks API requires OAuth — falling back to Kernels API (latest run only).")
             return _pull_task_kernels(kag_client, task_slug, out_dir)
         print(f"   [x] Failed to list runs: {exc_str}", file=sys.stderr)
         return []
@@ -201,7 +208,7 @@ def main() -> None:
         if i > 1:
             time.sleep(0.5)
         print(f"⬇  [{i}/{len(task_slugs)}] {task_slug}")
-        files = pull_task(kag_client, task_slug, out_dir)
+        files = pull_task(kag_client, task_slug, out_dir, bearer_ok=bearer_ok)
         if files:
             all_files.extend(files)
         else:

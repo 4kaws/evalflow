@@ -369,7 +369,7 @@ class PullView(Vertical):
             if i > 1:
                 _time.sleep(0.5)   # avoid 429 rate limit between tasks
             log.write_line(f"\n[{i}/{len(task_slugs)}] Pulling: {task_slug}")
-            run_files = self._pull_one_task(kag_client, task_slug, out_dir, log, version=version)
+            run_files = self._pull_one_task(kag_client, task_slug, out_dir, log, version=version, bearer_ok=bearer_ok)
             if run_files:
                 all_downloaded.extend((task_slug, p) for p in run_files)
             elif run_files is None:
@@ -463,6 +463,7 @@ class PullView(Vertical):
         out_dir: Path,
         log: Log,
         version: int | None = None,
+        bearer_ok: bool = True,
     ) -> list[Path] | None:
         """Download .run.json outputs for a benchmark task via the Benchmark Tasks API.
 
@@ -511,11 +512,19 @@ class PullView(Vertical):
         except Exception as exc:
             exc_str = str(exc)
             if "403" in exc_str or "404" in exc_str:
-                log.write_line(
-                    "   [!] Tasks API requires OAuth — Bearer auth not available.\n"
-                    "   Fetching latest run only via Kernels API (1 model per task).\n"
-                    "   To get all runs: run the wizard (w) and complete the OAuth step."
-                )
+                if bearer_ok:
+                    log.write_line(
+                        f"   [!] Tasks API returned {('403' if '403' in exc_str else '404')} "
+                        "despite valid Bearer auth — your OAuth token may have expired.\n"
+                        "   Re-run the wizard (w) and redo the OAuth step to refresh it.\n"
+                        "   Falling back to Kernels API (latest run only per task)."
+                    )
+                else:
+                    log.write_line(
+                        "   [!] Tasks API requires OAuth — Bearer auth not available.\n"
+                        "   Fetching latest run only via Kernels API (1 model per task).\n"
+                        "   To get all runs: run the wizard (w) and complete the OAuth step."
+                    )
                 return self._pull_one_task_kernels(kag_client, task_slug, out_dir, log)
             log.write_line(f"   [x] Failed to list runs for {task_slug}: {exc_str}")
             return []
