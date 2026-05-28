@@ -512,10 +512,17 @@ class PullView(Vertical):
         except Exception as exc:
             exc_str = str(exc)
             if "403" in exc_str or "404" in exc_str:
-                if bearer_ok:
+                is_404 = "404" in exc_str
+                if is_404 and bearer_ok:
                     log.write_line(
-                        f"   [!] Tasks API returned {('403' if '403' in exc_str else '404')} "
-                        "despite valid Bearer auth — your OAuth token may have expired.\n"
+                        "   [!] Tasks API returned 404 — this slug is not registered as a\n"
+                        "   benchmark task, or you don't own it. It may be a plain notebook.\n"
+                        "   Falling back to Kernels API (latest run only per task)."
+                    )
+                elif bearer_ok:
+                    log.write_line(
+                        "   [!] Tasks API returned 403 despite valid Bearer auth —\n"
+                        "   your OAuth token may have expired.\n"
                         "   Re-run the wizard (w) and redo the OAuth step to refresh it.\n"
                         "   Falling back to Kernels API (latest run only per task)."
                     )

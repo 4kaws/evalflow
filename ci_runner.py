@@ -91,12 +91,17 @@ def pull_task(kag_client, task_slug: str, out_dir: Path, bearer_ok: bool = True)
     except Exception as exc:
         exc_str = str(exc)
         if "403" in exc_str or "404" in exc_str:
-            if bearer_ok:
+            is_404 = "404" in exc_str
+            if is_404 and bearer_ok:
                 print(
-                    f"   [!] Tasks API returned {('403' if '403' in exc_str else '404')} "
-                    "despite valid Bearer auth — OAuth token may have expired.\n"
-                    "   Re-run the wizard and redo the OAuth step, or refresh KAGGLE_REFRESH_TOKEN.\n"
-                    "   Falling back to Kernels API (latest run only per task)."
+                    "   [!] Tasks API returned 404 — slug is not a registered benchmark task\n"
+                    "   or you don't own it. Falling back to Kernels API (latest run only)."
+                )
+            elif bearer_ok:
+                print(
+                    "   [!] Tasks API returned 403 despite valid Bearer auth —\n"
+                    "   OAuth token may have expired. Re-run the wizard and redo the OAuth step,\n"
+                    "   or refresh KAGGLE_REFRESH_TOKEN. Falling back to Kernels API (latest run only)."
                 )
             else:
                 print("   [!] Tasks API requires OAuth — falling back to Kernels API (latest run only).")
