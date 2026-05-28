@@ -493,7 +493,7 @@ class SetupWizard(App):
             )
             creds.save()
 
-            def _on_success(u=resp.username):
+            def _on_success(u=resp.username, rt=resp.refreshToken):
                 wizard_username, _ = self._get_kaggle_creds()
                 if wizard_username and u.lower() != wizard_username.lower():
                     self.query_one("#oauth-status").update(
@@ -506,6 +506,10 @@ class SetupWizard(App):
                     self.query_one("#oauth-status").update(
                         f"Authenticated as {u} — success! Click Next to continue."
                     )
+                    # Save refresh token to .env so local runs always have a
+                    # fresh token (credentials.json access tokens expire quickly).
+                    if rt:
+                        self._config["KAGGLE_REFRESH_TOKEN"] = rt
                 self.query_one("#oauth-code", Input).add_class("hidden")
                 self.query_one("#oauth-verify-btn", Button).add_class("hidden")
 
@@ -629,7 +633,8 @@ class SetupWizard(App):
                 "GITHUB_TOKEN": self.query_one("#github-token", Input).value.strip(),
                 "GITHUB_REPO":  self.query_one("#github-repo",  Input).value.strip(),
             })
-        # step 2 (oauth) writes directly to ~/.kaggle/credentials.json — nothing to collect
+        # step 2 (oauth) writes ~/.kaggle/credentials.json and sets KAGGLE_REFRESH_TOKEN in
+        # self._config via _on_success — nothing to collect here
 
     def _write_env(self) -> None:
         if ENV_FILE.exists():
