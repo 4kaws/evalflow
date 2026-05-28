@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Button, DataTable, Input, Log, Select, SelectionList, Static
 
 from config import config
@@ -60,12 +60,12 @@ class RunView(Vertical):
 
     #run-top {
         layout: horizontal;
-        height: 15;
+        height: auto;
     }
 
     #tasks-panel {
         width: 1fr;
-        height: 1fr;
+        height: auto;
         margin-right: 1;
     }
 
@@ -86,7 +86,7 @@ class RunView(Vertical):
 
     #schedule-panel {
         width: 1fr;
-        height: 1fr;
+        height: auto;
     }
 
     .field-row {
@@ -128,7 +128,7 @@ class RunView(Vertical):
         margin-top: 0;
     }
 
-    #run-controls { height: auto; }
+    #run-controls { height: auto; max-height: 60%; }
 
     #run-results { height: 1fr; }
 
@@ -172,7 +172,7 @@ class RunView(Vertical):
             "Re-run and monitor benchmark task runs for models already in your benchmark.",
         )
         with Vertical(id="run-body"):
-            with Vertical(id="run-controls"):
+            with VerticalScroll(id="run-controls"):
                 yield Static(
                     "To add a NEW model to a benchmark, open it on Kaggle and use the [dim]Add Models[/dim] button.\n"
                     "Once a model is added there, use [bold]Schedule Runs[/bold] here to re-trigger specific task runs.",

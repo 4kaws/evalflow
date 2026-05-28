@@ -303,7 +303,6 @@ class EvalflowApp(App):
     App.short #tasks-table   { height: 4; }
     App.short #models-list   { height: 4; }
     App.short #watcher-table { height: 4; }
-    App.short #run-top       { height: 10; }
     App.short #runs-table    { height: 3; }
     App.short PageHeader               { min-height: 3; padding: 0 2; }
     App.short PageHeader #ph-subtitle  { display: none; }
@@ -314,7 +313,6 @@ class EvalflowApp(App):
 
     /* tall: >= 55 rows — grow watcher table and run controls    */
     App.tall  #watcher-table { height: 10; }
-    App.tall  #run-top       { height: 20; }
     App.tall  #runs-table    { height: 8; }
     """
 
