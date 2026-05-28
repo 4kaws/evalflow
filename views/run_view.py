@@ -158,10 +158,11 @@ class RunView(Vertical):
 
     RunView.tasks-focused #schedule-panel { display: none; }
     RunView.tasks-focused #run-results { display: none; }
-    RunView.tasks-focused #run-controls { height: 1fr; max-height: 100%; }
-    RunView.tasks-focused #run-top { height: 1fr; }
-    RunView.tasks-focused #tasks-panel { height: 1fr; }
-    RunView.tasks-focused #tasks-table { height: 1fr; }
+    RunView.tasks-focused #hint-note { display: none; }
+    RunView.tasks-focused #manual-slug-row { display: none; }
+    RunView.tasks-focused #oauth-row { display: none; }
+    RunView.tasks-focused #run-controls { max-height: 100%; }
+    RunView.tasks-focused #tasks-table { height: 25; }
     """
 
     def action_toggle_log_focus(self) -> None:

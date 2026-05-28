@@ -314,6 +314,10 @@ class EvalflowApp(App):
     /* tall: >= 55 rows — grow watcher table and run controls    */
     App.tall  #watcher-table { height: 10; }
     App.tall  #runs-table    { height: 8; }
+    App.tall  RunView.tasks-focused #tasks-table  { height: 38; }
+
+    /* short: tasks-focused table is smaller on short terminals  */
+    App.short RunView.tasks-focused #tasks-table  { height: 12; }
     """
 
     BINDINGS = [
