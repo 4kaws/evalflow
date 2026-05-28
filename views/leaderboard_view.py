@@ -246,11 +246,14 @@ class LeaderboardView(Vertical):
         if model_name not in models:
             return
 
+        from rich.markup import escape
+
         lines: list[str] = []
-        lines.append(f"[bold]{model_name.split('/')[-1]}[/bold] vs others\n")
+        lines.append(f"[bold]{escape(model_name.split('/')[-1])}[/bold] vs others\n")
 
         for _, row in pivot.iterrows():
-            q_short = str(row["question"])[:65] + ("…" if len(str(row["question"])) > 65 else "")
+            raw_q = str(row["question"])
+            q_short = escape(raw_q[:65] + ("…" if len(raw_q) > 65 else ""))
             my_score = row.get(model_name, None)
             other_scores = {m: row.get(m) for m in models if m != model_name and pd.notna(row.get(m))}
 
@@ -258,15 +261,15 @@ class LeaderboardView(Vertical):
                 continue
 
             my_icon = "+" if my_score == 1 else "-"
-            others_str = "  ".join(
+            others_str = escape("  ".join(
                 f"{m.split('/')[-1]}:{'+' if s == 1 else '-'}"
                 for m, s in other_scores.items()
-            )
+            ))
 
             line_color = "diff-row-pass" if my_score == 1 else "diff-row-fail"
             lines.append(f"[{line_color}]{my_icon} {q_short}[/{line_color}]")
             if others_str:
-                lines.append(f"    [{('dim')}]{others_str}[/dim]")
+                lines.append(f"    [dim]{others_str}[/dim]")
             lines.append("")
 
         content = "\n".join(lines) if lines else "No shared questions found across models."
