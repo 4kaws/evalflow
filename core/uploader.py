@@ -117,6 +117,23 @@ def upload_dataset(
     owner, slug = dataset_id.split("/", 1)
 
     try:
+        # kaggle v2+ sends blob uploads through a Bearer-only endpoint.
+        # If KAGGLE_USERNAME+KEY are set, authenticate() falls back to Basic
+        # auth before it checks credentials.json — and the blob endpoint rejects
+        # Basic with 401. Inject the OAuth token as KAGGLE_API_TOKEN so the
+        # higher-priority _authenticate_with_access_token path wins.
+        try:
+            from kagglesdk import KaggleClient
+            from kagglesdk.kaggle_creds import KaggleCredentials
+            _base = KaggleClient(username=username, password=api_key)
+            _creds = KaggleCredentials.load(_base)
+            if _creds:
+                _token = _creds.get_access_token()
+                if _token:
+                    os.environ["KAGGLE_API_TOKEN"] = _token
+        except Exception:
+            pass
+
         from kaggle.api.kaggle_api_extended import KaggleApi
         api = KaggleApi()
         api.authenticate()
