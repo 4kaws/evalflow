@@ -285,7 +285,11 @@ class MonitorView(Vertical):
     def _load_schedule_ui(self) -> None:
         found, hh, mm, tz = _get_schedule()
         self.query_one("#time-input", Input).value = f"{hh:02d}:{mm:02d}" if found else ""
-        self.query_one("#tz-select", Select).value = tz if found else Select.BLANK  # type: ignore[assignment]
+        tz_select = self.query_one("#tz-select", Select)
+        if found:
+            tz_select.value = tz
+        else:
+            tz_select.clear()
         self.query_one("#schedule-panel").update(_next_run_text(found, hh, mm))
 
     def _save_schedule(self) -> None:
