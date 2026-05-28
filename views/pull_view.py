@@ -515,9 +515,8 @@ class PullView(Vertical):
                 is_404 = "404" in exc_str
                 if is_404 and bearer_ok:
                     log.write_line(
-                        "   [!] Tasks API returned 404 — this slug is not registered as a\n"
-                        "   benchmark task, or you don't own it. It may be a plain notebook.\n"
-                        "   Falling back to Kernels API (latest run only per task)."
+                        "   [!] Tasks API returned 404 — the Tasks API only allows the benchmark\n"
+                        "   owner to list all runs. Falling back to Kernels API (latest run per task)."
                     )
                 elif bearer_ok:
                     log.write_line(
