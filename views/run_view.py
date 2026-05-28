@@ -60,7 +60,7 @@ class RunView(Vertical):
 
     #run-top {
         layout: horizontal;
-        height: 16;
+        height: 15;
     }
 
     #tasks-panel {
@@ -70,7 +70,7 @@ class RunView(Vertical):
     }
 
     #tasks-table {
-        height: 10;
+        height: 5;
         background: $surface;
         border: round #D0D7DE;
     }
@@ -105,10 +105,16 @@ class RunView(Vertical):
     .field-select { width: 1fr; }
 
     #models-list {
-        height: 8;
+        height: 5;
         background: $surface;
         border: round #D0D7DE;
         margin-top: 0;
+    }
+
+    #models-label {
+        color: #636E7B;
+        height: 1;
+        margin-top: 1;
     }
 
     #schedule-btn-row { layout: horizontal; height: 3; margin-top: 1; }
@@ -211,7 +217,7 @@ class RunView(Vertical):
                                 allow_blank=False,
                             )
 
-                        yield Static("  Models  (check to include):", classes="field-label")
+                        yield Static("  Models  (check to include):", id="models-label")
                         yield SelectionList(
                             ("— load models first —", "__placeholder__", False),
                             id="models-list",
