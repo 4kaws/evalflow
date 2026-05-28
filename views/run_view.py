@@ -679,6 +679,7 @@ class RunView(Vertical):
             req = ExchangeOAuthTokenRequest()
             req.code = code
             req.code_verifier = self._oauth_state["code_verifier"]
+            req.redirect_uri = _OAUTH_REDIRECT
             req.grant_type = "authorization_code"
 
             resp = base_client.security.oauth_client.exchange_oauth_token(req)
