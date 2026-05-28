@@ -333,6 +333,7 @@ class EvalflowApp(App):
         Binding("escape", "unfocus",         "Unfocus",     show=False),
         Binding("down",   "focus_next",      "",            show=False),
         Binding("up",     "focus_previous",  "",            show=False),
+        Binding("ctrl+a", "select_all_input", "",           show=False, priority=True),
     ]
 
     def _apply_responsive(self) -> None:
@@ -391,6 +392,11 @@ class EvalflowApp(App):
             view.on_activate()
         self.set_focus(None)
         self.query_one(StatusBar).refresh_status(view_id)
+
+    def action_select_all_input(self) -> None:
+        from textual.widgets import Input
+        if isinstance(self.focused, Input):
+            self.focused.select_all()
 
     def action_unfocus(self) -> None:
         """Escape — close help if open, otherwise blur the focused widget."""

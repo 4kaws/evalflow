@@ -145,10 +145,11 @@ class SetupWizard(App):
     """
 
     BINDINGS = [
-        Binding("escape", "esc_key",  "Esc", show=False),
-        Binding("enter",  "enter_key", "",   show=False),
-        Binding("left",   "nav_left",  "",   show=False),
-        Binding("right",  "nav_right", "",   show=False),
+        Binding("escape", "esc_key",    "Esc", show=False),
+        Binding("enter",  "enter_key",  "",    show=False),
+        Binding("left",   "nav_left",   "",    show=False),
+        Binding("right",  "nav_right",  "",    show=False),
+        Binding("ctrl+a", "select_all_input", "", show=False, priority=True),
     ]
 
     # Ordered input IDs for steps that have form fields.
@@ -517,6 +518,11 @@ class SetupWizard(App):
     # ------------------------------------------------------------------ #
     #  Keyboard actions                                                     #
     # ------------------------------------------------------------------ #
+
+    def action_select_all_input(self) -> None:
+        from textual.widgets import Input
+        if isinstance(self.focused, Input):
+            self.focused.select_all()
 
     def action_enter_key(self) -> None:
         focused = self.focused
