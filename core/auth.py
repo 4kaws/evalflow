@@ -6,6 +6,22 @@ from datetime import datetime, timezone
 from typing import Callable, Optional, Tuple
 
 
+def _oauth_refresh(base_client, refresh_token: str) -> Optional[str]:
+    """Exchange a refresh token for a fresh OAuth access token.
+
+    Uses the OAuth2 refresh_token grant, which returns a proper OAuth-scoped
+    token accepted by the Benchmark Tasks API. The alternative
+    (KaggleCredentials.refresh_access_token → GenerateAccessTokenRequest) hits
+    a different endpoint that returns a legacy API-key token rejected by Tasks API.
+    """
+    from kagglesdk.security.types.oauth_service import ExchangeOAuthTokenRequest
+    req = ExchangeOAuthTokenRequest()
+    req.grant_type = "refresh_token"
+    req.refresh_token = refresh_token
+    resp = base_client.security.oauth_client.exchange_oauth_token(req)
+    return resp.accessToken if resp and resp.accessToken else None
+
+
 def make_bearer_client(
     username: str,
     api_key: str,
@@ -14,11 +30,11 @@ def make_bearer_client(
     """Return (KaggleClient, bearer_ok).
 
     Upgrades to Bearer auth in priority order:
-      1. KAGGLE_REFRESH_TOKEN env var — set as a GitHub/CI secret.
+      1. KAGGLE_REFRESH_TOKEN env var — set as a GitHub/CI secret or by wizard.
       2. ~/.kaggle/credentials.json  — written by `kaggle auth login`.
     Falls back to Basic auth (username + API key) if neither is available.
     Basic auth still works for Kernels API endpoints but is rejected by the
-    Benchmark Tasks API for non-owned tasks.
+    Benchmark Tasks API (returns 404 for any request, including the owner's).
     """
     from kagglesdk import KaggleClient
 
@@ -33,22 +49,25 @@ def make_bearer_client(
 
         refresh_token = os.environ.get("KAGGLE_REFRESH_TOKEN")
         if refresh_token:
-            creds = KaggleCredentials(client=base_client, refresh_token=refresh_token)
-            token = creds.get_access_token()
+            token = _oauth_refresh(base_client, refresh_token)
             if token:
-                _log(f"Authenticated as {username}")
+                _log(f"Authenticated as {username} (Bearer)")
                 return KaggleClient(api_token=token), True
 
         creds = KaggleCredentials.load(base_client)
-        if creds:
-            # The SDK's access_token_has_expired() has a 30-minute grace period that
-            # can return a genuinely-expired token. Clear it so get_access_token()
-            # is forced to call refresh_access_token() and get a fresh one.
-            if (creds._access_token_expiration and
-                    creds._access_token_expiration < datetime.now(timezone.utc)):
-                creds._access_token = None
-            token = creds.get_access_token()
-            if token:
+        if creds and creds._refresh_token:
+            # Use the OAuth refresh endpoint — NOT KaggleCredentials.refresh_access_token()
+            # which calls GenerateAccessTokenRequest and returns a legacy token that the
+            # Tasks API rejects with 404.
+            access_token = creds._access_token
+            expired = (
+                not access_token
+                or not creds._access_token_expiration
+                or creds._access_token_expiration < datetime.now(timezone.utc)
+            )
+            if expired:
+                access_token = _oauth_refresh(base_client, creds._refresh_token)
+            if access_token:
                 oauth_user = creds.get_username() or ""
                 if oauth_user and oauth_user.lower() != username.lower():
                     _log(
@@ -59,7 +78,7 @@ def make_bearer_client(
                     # fall through to basic auth
                 else:
                     _log(f"Authenticated as {username} (Bearer)")
-                    return KaggleClient(api_token=token), True
+                    return KaggleClient(api_token=access_token), True
     except Exception:
         pass
 
