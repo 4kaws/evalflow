@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 from typing import Callable, Optional, Tuple
 
 
@@ -40,6 +41,12 @@ def make_bearer_client(
 
         creds = KaggleCredentials.load(base_client)
         if creds:
+            # The SDK's access_token_has_expired() has a 30-minute grace period that
+            # can return a genuinely-expired token. Clear it so get_access_token()
+            # is forced to call refresh_access_token() and get a fresh one.
+            if (creds._access_token_expiration and
+                    creds._access_token_expiration < datetime.now(timezone.utc)):
+                creds._access_token = None
             token = creds.get_access_token()
             if token:
                 oauth_user = creds.get_username() or ""

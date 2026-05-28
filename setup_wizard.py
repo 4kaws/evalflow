@@ -18,7 +18,7 @@ from pathlib import Path
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.theme import Theme
 from textual.widgets import Button, Input, Label, Static
 
@@ -97,16 +97,21 @@ class SetupWizard(App):
     """First-run setup wizard for Evalflow."""
 
     CSS = """
-    Screen { align: center middle; background: $background; }
+    Screen { layout: vertical; background: $background; }
 
     #wizard-container {
         width: 100%;
-        height: auto;
-        max-height: 95vh;
+        height: 1fr;
         padding: 0 2;
     }
 
+    #wizard-scroll {
+        height: 1fr;
+        padding: 0 1;
+    }
+
     #step-counter {
+        height: auto;
         text-align: center;
         color: $text-muted;
         margin-bottom: 1;
@@ -170,129 +175,130 @@ class SetupWizard(App):
         with Vertical(id="wizard-container"):
             yield Static("", id="step-counter", markup=True)
 
-            # Step 0: Welcome
-            has_creds = bool(self._existing.get("KAGGLE_KEY"))
-            welcome_msg = (
-                "Credentials found. Review and update below, or press Skip setup to go straight to the app."
-                if has_creds else
-                "This wizard configures your Kaggle credentials so you can pull benchmark\n"
-                "outputs and publish datasets. Press Next to continue."
-            )
-            yield WizardStep(
-                Static(_ASCII_LOGO, markup=True, id="wizard-logo"),
-                Static(welcome_msg, classes="step-body"),
-                id="step-welcome",
-            )
+            with VerticalScroll(id="wizard-scroll"):
+                # Step 0: Welcome
+                has_creds = bool(self._existing.get("KAGGLE_KEY"))
+                welcome_msg = (
+                    "Credentials found. Review and update below, or press Skip setup to go straight to the app."
+                    if has_creds else
+                    "This wizard configures your Kaggle credentials so you can pull benchmark\n"
+                    "outputs and publish datasets. Press Next to continue."
+                )
+                yield WizardStep(
+                    Static(_ASCII_LOGO, markup=True, id="wizard-logo"),
+                    Static(welcome_msg, classes="step-body"),
+                    id="step-welcome",
+                )
 
-            # Step 1: Kaggle API credentials
-            yield WizardStep(
-                Static("Kaggle API Credentials", classes="step-title"),
-                Static(
-                    "Your Kaggle username and Legacy API key.\n\n"
-                    "  The API key is used for:\n"
-                    "    • Publishing datasets to Kaggle\n"
-                    "    • Kernels API fallback (latest run only, no OAuth needed)\n\n"
-                    "  OAuth (next step) is needed to pull all model runs from any\n"
-                    "  public benchmark. Both credentials must be the same Kaggle account.",
-                    classes="step-body",
-                ),
-                Static(
-                    "How to get them:\n"
-                    "  1. Go to kaggle.com → Settings → Account\n"
-                    "  2. Scroll to 'Legacy API Credentials'\n"
-                    "  3. Click 'Create Legacy API Key' — downloads kaggle.json\n"
-                    "  4. Open that file: it contains your username and key\n\n"
-                    "  Important: use the Legacy API Key from the JSON file,\n"
-                    "  not the newer 'API tokens' listed above it on that page.",
-                    classes="note-info",
-                ),
-                Label("KAGGLE_USERNAME:", classes="field-label"),
-                Input(
-                    value=self._existing.get("KAGGLE_USERNAME", ""),
-                    placeholder="your-kaggle-username",
-                    id="kaggle-username",
-                ),
-                Label("KAGGLE_KEY  (from kaggle.json):", classes="field-label"),
-                Input(
-                    value=self._existing.get("KAGGLE_KEY", ""),
-                    placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-                    id="kaggle-key",
-                    password=True,
-                ),
-                id="step-kaggle-api",
-                classes="hidden",
-            )
-
-            # Step 2: Kaggle OAuth
-            yield WizardStep(
-                Static("Kaggle OAuth Login", classes="step-title"),
-                Static(
-                    "Recommended — needed to pull all model runs and to use the Run tab.\n"
-                    "Without it, Pull fetches only the latest model run per task.\n"
-                    "You can skip now and click 'Kaggle Login' in the Run tab later.",
-                    classes="note-optional",
-                ),
-                Static(
-                    "  1. Click Generate Login URL\n"
-                    "  2. Open the URL in your browser and sign in to Kaggle\n"
-                    "  3. Kaggle shows a verification code — paste it in the field below",
-                    classes="step-body",
-                ),
-                Static("", id="oauth-status", classes="note-info"),
-                Button("Generate Login URL", id="oauth-gen-btn", variant="primary"),
-                Static("", id="oauth-url-display", classes="hidden"),
-                Label("Verification code:", classes="field-label hidden", id="oauth-code-label"),
-                Input(
-                    id="oauth-code",
-                    placeholder="Paste the code shown by Kaggle…",
+                # Step 1: Kaggle API credentials
+                yield WizardStep(
+                    Static("Kaggle API Credentials", classes="step-title"),
+                    Static(
+                        "Your Kaggle username and Legacy API key.\n\n"
+                        "  The API key is used for:\n"
+                        "    • Publishing datasets to Kaggle\n"
+                        "    • Kernels API fallback (latest run only, no OAuth needed)\n\n"
+                        "  OAuth (next step) is needed to pull all model runs from any\n"
+                        "  public benchmark. Both credentials must be the same Kaggle account.",
+                        classes="step-body",
+                    ),
+                    Static(
+                        "How to get them:\n"
+                        "  1. Go to kaggle.com → Settings → Account\n"
+                        "  2. Scroll to 'Legacy API Credentials'\n"
+                        "  3. Click 'Create Legacy API Key' — downloads kaggle.json\n"
+                        "  4. Open that file: it contains your username and key\n\n"
+                        "  Important: use the Legacy API Key from the JSON file,\n"
+                        "  not the newer 'API tokens' listed above it on that page.",
+                        classes="note-info",
+                    ),
+                    Label("KAGGLE_USERNAME:", classes="field-label"),
+                    Input(
+                        value=self._existing.get("KAGGLE_USERNAME", ""),
+                        placeholder="your-kaggle-username",
+                        id="kaggle-username",
+                    ),
+                    Label("KAGGLE_KEY  (from kaggle.json):", classes="field-label"),
+                    Input(
+                        value=self._existing.get("KAGGLE_KEY", ""),
+                        placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                        id="kaggle-key",
+                        password=True,
+                    ),
+                    id="step-kaggle-api",
                     classes="hidden",
-                ),
-                Button("Verify Code", id="oauth-verify-btn", variant="default", classes="hidden"),
-                id="step-oauth",
-                classes="hidden",
-            )
+                )
 
-            # Step 3: GitHub credentials
-            yield WizardStep(
-                Static("GitHub Integration (optional)", classes="step-title"),
-                Static(
-                    "Used to sync your watcher list to GitHub Actions as a secret,\n"
-                    "so the daily monitor can run in CI without exposing your config.",
-                    classes="step-body",
-                ),
-                Static(
-                    "How to create a token:\n"
-                    "  1. Go to github.com → Settings → Developer settings\n"
-                    "  2. Personal access tokens → Fine-grained tokens → Generate new token\n"
-                    "  3. Under 'Repository permissions' → Secrets → Read and write\n"
-                    "  4. Copy the token below\n\n"
-                    "  GITHUB_REPO format: owner/repo  (e.g. 4kaws/evalflow)",
-                    classes="note-info",
-                ),
-                Label("GITHUB_TOKEN:", classes="field-label"),
-                Input(
-                    value=self._existing.get("GITHUB_TOKEN", ""),
-                    placeholder="github_pat_...",
-                    id="github-token",
-                    password=True,
-                ),
-                Label("GITHUB_REPO:", classes="field-label"),
-                Input(
-                    value=self._existing.get("GITHUB_REPO", ""),
-                    placeholder="owner/repo",
-                    id="github-repo",
-                ),
-                id="step-github",
-                classes="hidden",
-            )
+                # Step 2: Kaggle OAuth
+                yield WizardStep(
+                    Static("Kaggle OAuth Login", classes="step-title"),
+                    Static(
+                        "Recommended — needed to pull all model runs and to use the Run tab.\n"
+                        "Without it, Pull fetches only the latest model run per task.\n"
+                        "You can skip now and click 'Kaggle Login' in the Run tab later.",
+                        classes="note-optional",
+                    ),
+                    Static(
+                        "  1. Click Generate Login URL\n"
+                        "  2. Open the URL in your browser and sign in to Kaggle\n"
+                        "  3. Kaggle shows a verification code — paste it in the field below",
+                        classes="step-body",
+                    ),
+                    Static("", id="oauth-status", classes="note-info"),
+                    Button("Generate Login URL", id="oauth-gen-btn", variant="primary"),
+                    Static("", id="oauth-url-display", classes="hidden"),
+                    Label("Verification code:", classes="field-label hidden", id="oauth-code-label"),
+                    Input(
+                        id="oauth-code",
+                        placeholder="Paste the code shown by Kaggle…",
+                        classes="hidden",
+                    ),
+                    Button("Verify Code", id="oauth-verify-btn", variant="default", classes="hidden"),
+                    id="step-oauth",
+                    classes="hidden",
+                )
 
-            # Step 4: Done
-            yield WizardStep(
-                Static("All done!", classes="step-title"),
-                Static("", id="done-summary", classes="step-body"),
-                id="step-done",
-                classes="hidden",
-            )
+                # Step 3: GitHub credentials
+                yield WizardStep(
+                    Static("GitHub Integration (optional)", classes="step-title"),
+                    Static(
+                        "Used to sync your watcher list to GitHub Actions as a secret,\n"
+                        "so the daily monitor can run in CI without exposing your config.",
+                        classes="step-body",
+                    ),
+                    Static(
+                        "How to create a token:\n"
+                        "  1. Go to github.com → Settings → Developer settings\n"
+                        "  2. Personal access tokens → Fine-grained tokens → Generate new token\n"
+                        "  3. Under 'Repository permissions' → Secrets → Read and write\n"
+                        "  4. Copy the token below\n\n"
+                        "  GITHUB_REPO format: owner/repo  (e.g. 4kaws/evalflow)",
+                        classes="note-info",
+                    ),
+                    Label("GITHUB_TOKEN:", classes="field-label"),
+                    Input(
+                        value=self._existing.get("GITHUB_TOKEN", ""),
+                        placeholder="github_pat_...",
+                        id="github-token",
+                        password=True,
+                    ),
+                    Label("GITHUB_REPO:", classes="field-label"),
+                    Input(
+                        value=self._existing.get("GITHUB_REPO", ""),
+                        placeholder="owner/repo",
+                        id="github-repo",
+                    ),
+                    id="step-github",
+                    classes="hidden",
+                )
+
+                # Step 4: Done
+                yield WizardStep(
+                    Static("All done!", classes="step-title"),
+                    Static("", id="done-summary", classes="step-body"),
+                    id="step-done",
+                    classes="hidden",
+                )
 
             with Horizontal(id="nav-row"):
                 yield Button("← Back",    id="back-btn", variant="default", classes="hidden")
@@ -583,9 +589,11 @@ class SetupWizard(App):
         ]
         try:
             step = self.query_one(f"#{step_ids[self._step_index]}")
-            inputs = step.query("Input")
-            if inputs:
-                inputs.first().focus()
+            # Skip hidden inputs — focusing a display:none widget routes Enter key
+            # to Input.Submitted instead of the Next button binding.
+            visible_inputs = [i for i in step.query("Input") if "hidden" not in i.classes]
+            if visible_inputs:
+                visible_inputs[0].focus()
             else:
                 self.query_one("#next-btn", Button).focus()
         except Exception:
