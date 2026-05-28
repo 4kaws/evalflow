@@ -24,7 +24,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Button, DataTable, Input, Log, Select, SelectionList, Static
 
 from config import config
-from views.widgets import LogExpandIcon, PageHeader
+from views.widgets import LogExpandIcon, PageHeader, TasksExpandIcon
 
 _OAUTH_REDIRECT = "https://www.kaggle.com/account/api/oauth/token"
 _OAUTH_SCOPE    = "resources.admin:*"
@@ -155,10 +155,20 @@ class RunView(Vertical):
     }
 
     RunView.log-focused #run-controls { display: none; }
+
+    RunView.tasks-focused #schedule-panel { display: none; }
+    RunView.tasks-focused #run-results { display: none; }
+    RunView.tasks-focused #run-controls { height: 1fr; max-height: 100%; }
+    RunView.tasks-focused #run-top { height: 1fr; }
+    RunView.tasks-focused #tasks-panel { height: 1fr; }
+    RunView.tasks-focused #tasks-table { height: 1fr; }
     """
 
     def action_toggle_log_focus(self) -> None:
         self.toggle_class("log-focused")
+
+    def action_toggle_tasks_focus(self) -> None:
+        self.toggle_class("tasks-focused")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -183,7 +193,9 @@ class RunView(Vertical):
                 with Horizontal(id="run-top"):
                     # Left: My Tasks table
                     with Vertical(id="tasks-panel"):
-                        yield Static("My Tasks", classes="section-title")
+                        with Horizontal(classes="log-header-row"):
+                            yield Static("My Tasks", classes="section-title")
+                            yield TasksExpandIcon()
                         yield DataTable(id="tasks-table", cursor_type="row", zebra_stripes=True)
                         with Horizontal(id="tasks-btn-row"):
                             yield Button("List My Tasks",           id="list-tasks-btn",   variant="primary")
