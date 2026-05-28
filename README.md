@@ -181,6 +181,9 @@ The setup wizard launches automatically on first run and collects:
   Click **Generate Login URL**, visit the URL in a browser, then paste the verification code shown by Kaggle.
   To authenticate later (or switch accounts), use the **Kaggle Login** button in the Run tab.
   **Important:** the API key and OAuth login must be for the same Kaggle account.
+  **Note:** multi-run pulling uses the Kaggle Benchmark Tasks API, which is currently in early beta.
+  Accounts without beta access fall back to the Kernels API (latest run per task only).
+  If Pull reports `Tasks API requires OAuth` even after logging in, your account may not have beta access yet — contact Kaggle support to request it.
 - **GitHub token and repo** — needed for the daily cloud schedule to sync your watcher config
   Create a fine-grained PAT at **github.com → Settings → Developer settings → Fine-grained tokens** with **Secrets: read & write** permission on your repo
 
@@ -282,6 +285,11 @@ If the benchmark has no leaderboard yet (new benchmark, no models added yet, or 
 the tab shows an explanatory hint. Check the **Single task** checkbox if you have a direct
 task slug rather than a benchmark slug and want to pull it without discovery.
 
+Pulling **all** runs (not just the latest) requires Kaggle OAuth plus access to the Benchmark Tasks API,
+which is currently in early beta. Accounts without beta access fall back to the Kernels API and receive
+only the most recent run per task. If you see `[!] Tasks API requires OAuth` even after OAuth is set up,
+your Kaggle account may not have beta access — contact Kaggle support to request it.
+
 The `outputs/` directory is wiped clean on every TUI launch so you always start fresh.
 
 ---
@@ -333,6 +341,8 @@ when your machine is off. See the CI section below.
 ---
 
 ## CI / GitHub Actions
+
+> **Fork required:** The GitHub Actions workflow runs in *your own* repository. To use it, **fork `4kaws/evalflow`** on GitHub first — cloning the original won't let you store secrets or trigger scheduled runs. After forking, clone your fork and run the setup wizard to push your credentials as Actions secrets automatically.
 
 `.github/workflows/evalflow_ci.yml` provides two modes:
 
